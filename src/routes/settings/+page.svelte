@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { formatWhen, formatDate } from '#lib/time.js';
@@ -10,22 +9,20 @@
 	const msg = (section: string) => (form?.section === section ? form : null);
 	const browserTz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
 
-	// One section shows at a time, picked by the URL hash so links like /settings#listenbrainz open it.
-	// The server never sees the hash, so read it only after hydration to keep the first render identical.
-	let hydrated = $state(false);
-	onMount(() => (hydrated = true));
+	// One section shows at a time, picked by ?section= so it renders on the server and works without JavaScript.
+	// Each form posts to ?section=<id>&/<action> so the same section reopens with its result.
 	const sections = $derived([
-		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || !!data.u.syncError, body: s_spotify },
-		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: !data.u.hasListenbrainz && !data.serverListenbrainz, body: s_listenbrainz },
-		{ id: 'own-app', group: 'Connections', title: 'Your own Spotify app', alert: false, body: s_own_app },
-		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: s_import },
-		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: s_prefs },
-		{ id: 'password', group: 'Profile', title: data.u.hasPassword ? 'Username and password' : 'Add a username and password', alert: false, body: s_password },
-		{ id: 'account', group: 'Profile', title: 'Account', alert: false, body: s_account },
-		...(data.admin ? [{ id: 'admin', group: 'Server', title: 'Admin', alert: false, body: s_admin }] : [])
+		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || !!data.u.syncError, body: spotifySection },
+		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: !data.u.hasListenbrainz && !data.serverListenbrainz, body: listenbrainzSection },
+		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
+		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
+		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
+		{ id: 'password', group: 'Profile', title: data.u.hasPassword ? 'Username and password' : 'Add a username and password', alert: false, body: passwordSection },
+		{ id: 'account', group: 'Profile', title: 'Account', alert: false, body: accountSection },
+		...(data.admin ? [{ id: 'admin', group: 'Server', title: 'Admin', alert: false, body: adminSection }] : [])
 	]);
 	const groups = $derived([...new Set(sections.map((s) => s.group))]);
-	const current = $derived(sections.find((s) => hydrated && s.id === page.url.hash.slice(1)) ?? sections.find((s) => s.id === (data.welcome ? 'import' : 'spotify'))!);
+	const current = $derived(sections.find((s) => s.id === (page.url.searchParams.get('section') ?? (data.welcome ? 'import' : 'spotify'))) ?? sections[0]);
 </script>
 
 <h1>Settings</h1>
@@ -38,20 +35,20 @@
 		{#each groups as g (g)}
 			<p class="group">{g}</p>
 			{#each sections.filter((s) => s.group === g) as s (s.id)}
-				<a href="#{s.id}" aria-current={s.id === current.id ? 'true' : undefined}>
+				<a href="?section={s.id}" aria-current={s.id === current.id ? 'true' : undefined}>
 					{s.title}
-					{#if s.alert}<span class="dot" title="Needs attention"></span><span class="sr-only">(needs attention)</span>{/if}
+					{#if s.alert}<span class="dot" aria-hidden="true"></span><span class="sr-only">(needs attention)</span>{/if}
 				</a>
 			{/each}
 		{/each}
 	</nav>
-	<section class="panel" id={current.id}>
+	<section class="panel" class:wide={current.id === 'admin'}>
 		<h2>{current.title}</h2>
 		{@render current.body()}
 	</section>
 </div>
 
-{#snippet s_spotify()}
+{#snippet spotifySection()}
 {#if data.u.linked}
 	<p>
 		{#if data.u.syncError === 'reauth'}
@@ -65,19 +62,19 @@
 	{#if data.u.linkExpires}<p class="muted">Spotify ends this link on {formatDate(data.u.linkExpires, data.u.timezone)}, six months after you signed in. Reconnect any time to reset it.</p>{/if}
 	<div class="row">
 		<a class="button" href="/auth/spotify?mode=link">Reconnect Spotify</a>
-		<form method="POST" action="?/unlink" use:enhance><button class="secondary">Unlink Spotify</button></form>
+		<form method="POST" action="?section=spotify&/unlink" use:enhance><button class="secondary">Unlink Spotify</button></form>
 	</div>
 	<p class="muted small">Unlinking stops syncing. Your history stays.</p>
 {:else if data.serverApp || data.u.ownClientId}
-	<p>Sign in with Spotify to track new plays automatically. Past plays come from <a href="#import">your history file</a>.</p>
+	<p>Sign in with Spotify to track new plays automatically. Past plays come from <a href="?section=import">your history file</a>.</p>
 	<a class="button" href="/auth/spotify?mode=link">Sign in with Spotify</a>
 {:else}
-	<p class="muted">No Spotify app is set up on this server yet. <a href="#own-app">Add your own</a>, or ask the admin to set one up.</p>
+	<p class="muted">No Spotify app is set up on this server yet. <a href="?section=ownApp">Add your own</a>, or ask the admin to set one up.</p>
 {/if}
 {#if msg('spotify')?.error}<p class="error">{msg('spotify')?.error}</p>{/if}
 {/snippet}
 
-{#snippet s_import()}
+{#snippet importSection()}
 <p>
 	Request <strong>Extended streaming history</strong> on Spotify's
 	<a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">privacy page</a>. It can take up to 30 days to arrive. Upload the .zip, or the
@@ -85,7 +82,7 @@
 </p>
 <form
 	method="POST"
-	action="?/import"
+	action="?section=import&/import"
 	enctype="multipart/form-data"
 	use:enhance={() => {
 		importing = true;
@@ -126,8 +123,8 @@
 {/if}
 {/snippet}
 
-{#snippet s_prefs()}
-<form method="POST" action="?/prefs" use:enhance={() => ({ update }) => update({ reset: false })} class="stack">
+{#snippet prefsSection()}
+<form method="POST" action="?section=prefs&/prefs" use:enhance={() => ({ update }) => update({ reset: false })} class="stack">
 	<label>Display name <input name="display_name" value={data.u.displayName} maxlength="60" /></label>
 	<label>
 		Time zone
@@ -149,9 +146,9 @@
 </form>
 {/snippet}
 
-{#snippet s_password()}
+{#snippet passwordSection()}
 {#if !data.u.hasPassword}<p class="muted">Lets you log in without Spotify.</p>{/if}
-<form method="POST" action="?/password" use:enhance class="stack">
+<form method="POST" action="?section=password&/password" use:enhance class="stack">
 	<label>Username <input name="username" value={data.u.username ?? ''} autocomplete="username" required /></label>
 	{#if data.u.hasPassword}<label>Current password <input name="current" type="password" autocomplete="current-password" required /></label>{/if}
 	<label>New password <input name="password" type="password" autocomplete="new-password" minlength="8" required /></label>
@@ -161,14 +158,14 @@
 </form>
 {/snippet}
 
-{#snippet s_own_app()}
+{#snippet ownAppSection()}
 <p class="muted">
 	Spotify lets each app link only 5 accounts. If this server's app is full, create your own free app at
 	<a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> (the app's owner needs Premium), add this
 	redirect address, then paste its Client ID and secret here and sign in with Spotify again.
 </p>
 <p><code>{data.callback}</code></p>
-<form method="POST" action="?/ownApp" use:enhance class="stack">
+<form method="POST" action="?section=ownApp&/ownApp" use:enhance class="stack">
 	<label>Client ID <input name="client_id" value={data.u.ownClientId ?? ''} autocomplete="off" /></label>
 	<label>Client secret <input name="client_secret" type="password" placeholder={data.u.ownClientId ? 'Saved' : ''} autocomplete="off" /></label>
 	<div class="row">
@@ -180,13 +177,13 @@
 </form>
 {/snippet}
 
-{#snippet s_listenbrainz()}
+{#snippet listenbrainzSection()}
 <p class="muted">
 	Discover uses ListenBrainz Radio to find new songs. Make a free account at
 	<a href="https://listenbrainz.org/settings/" target="_blank" rel="noopener">listenbrainz.org/settings</a>, copy your user token and paste it here.
 </p>
 {#if !data.u.hasListenbrainz && data.serverListenbrainz}<p class="muted small">Until you add your own, Discover uses this server's token.</p>{/if}
-<form method="POST" action="?/listenbrainz" use:enhance class="stack">
+<form method="POST" action="?section=listenbrainz&/listenbrainz" use:enhance class="stack">
 	<label>User token <input name="token" type="password" placeholder={data.u.hasListenbrainz ? 'Saved' : ''} autocomplete="off" /></label>
 	<div class="row">
 		<button>Save token</button>
@@ -197,18 +194,18 @@
 </form>
 {/snippet}
 
-{#snippet s_account()}
+{#snippet accountSection()}
 <form method="POST" action="/logout"><button class="secondary">Log out</button></form>
-<form method="POST" action="?/deleteAccount" use:enhance class="stack danger-zone">
+<form method="POST" action="?section=account&/deleteAccount" use:enhance class="stack danger-zone">
 	<label>Delete my account and all my plays. Type DELETE to confirm. <input name="confirm" autocomplete="off" /></label>
 	<button class="danger">Delete account</button>
 	{#if msg('account')?.error}<p class="error">{msg('account')?.error}</p>{/if}
 </form>
 {/snippet}
 
-{#snippet s_admin()}
+{#snippet adminSection()}
 {#if data.admin}
-	<form method="POST" action="?/adminSignup" use:enhance={() => ({ update }) => update({ reset: false })}>
+	<form method="POST" action="?section=admin&/adminSignup" use:enhance={() => ({ update }) => update({ reset: false })}>
 		<label class="inline">
 			<input type="checkbox" name="allow" checked={data.admin.allowSignup} onchange={(e) => e.currentTarget.form?.requestSubmit()} />
 			Anyone can create an account with a username and password
@@ -226,13 +223,13 @@
 					<td>{usr.linked ? 'Linked' : ''}</td>
 					<td>{fmt(usr.plays)}</td>
 					<td>
-						<form method="POST" action="?/adminToggle" use:enhance>
+						<form method="POST" action="?section=admin&/adminToggle" use:enhance>
 							<input type="hidden" name="id" value={usr.id} />
 							<button class="secondary small-btn">{usr.is_admin ? 'Remove admin' : 'Make admin'}</button>
 						</form>
 					</td>
 					<td>
-						<form method="POST" action="?/adminDelete" use:enhance={({ cancel }) => { if (!confirm(`Delete ${usr.display_name} and all their plays?`)) cancel(); }}>
+						<form method="POST" action="?section=admin&/adminDelete" use:enhance={({ cancel }) => { if (!confirm(`Delete ${usr.display_name} and all their plays?`)) cancel(); }}>
 							<input type="hidden" name="id" value={usr.id} />
 							<button class="danger small-btn">Delete</button>
 						</form>
@@ -241,7 +238,7 @@
 			{/each}
 		</tbody>
 	</table>
-	<form method="POST" action="?/adminCreate" use:enhance class="row create">
+	<form method="POST" action="?section=admin&/adminCreate" use:enhance class="row create">
 		<label>Username <input name="username" required /></label>
 		<label>Password <input name="password" type="password" minlength="8" required autocomplete="new-password" /></label>
 		<button>Create user</button>
@@ -328,7 +325,7 @@
 	}
 	.layout {
 		display: grid;
-		grid-template-columns: 220px minmax(0, 760px);
+		grid-template-columns: 220px minmax(0, 1fr);
 		gap: 28px;
 		align-items: start;
 	}
@@ -378,10 +375,14 @@
 		height: 1px;
 		overflow: hidden;
 		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.panel {
 		padding: 24px 28px;
-		scroll-margin-top: 20px;
+		max-width: 760px;
+	}
+	.panel.wide {
+		max-width: none;
 	}
 	@media (max-width: 760px) {
 		.layout {

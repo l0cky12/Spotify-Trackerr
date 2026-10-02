@@ -19,7 +19,7 @@
 
 {#if !data.enabled}
 	<section class="panel">
-		<p>Discover needs a ListenBrainz token. <a href="/settings#listenbrainz">Add yours in Settings</a>; a free account at listenbrainz.org provides one.</p>
+		<p>Discover needs a ListenBrainz token. <a href="/settings?section=listenbrainz">Add yours in Settings</a>; a free account at listenbrainz.org provides one.</p>
 	</section>
 {:else}
 	<div class="actions">
