@@ -16,8 +16,12 @@ export const load: PageServerLoad = ({ locals }) => {
 export const actions = {
 	refresh: async ({ locals }) => {
 		if (!lastfmEnabled()) return fail(400, { error: 'Discover needs Last.fm set up on the server.' });
-		const r = await buildDiscover(locals.user!);
-		if (!r.artists.length && !r.songs.length) return fail(502, { error: "Last.fm didn't return any new music for your top artists. Try again later." });
-		return { refreshed: true };
+		try {
+			const r = await buildDiscover(locals.user!);
+			if (!r.artists.length && !r.songs.length) return fail(502, { error: "Last.fm didn't return any new music for your top artists. Try again later." });
+			return { refreshed: true };
+		} catch {
+			return fail(502, { error: 'Could not refresh your picks or verify your Last.fm history. Try again later.' });
+		}
 	}
 } satisfies Actions;

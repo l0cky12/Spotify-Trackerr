@@ -3,14 +3,45 @@ import { key } from './ingest.js';
 import { appApi, SpotifyError } from './spotify.js';
 
 const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
+const queues = new Map<string, { pending: Promise<void>; next: number }>();
+let deezerPausedUntil = 0;
 
-async function getJson(url: string) {
-	const res = await fetch(url, { headers: { 'User-Agent': UA } });
-	if (!res.ok) throw Object.assign(new Error(`${url} -> ${res.status}`), { status: res.status });
-	return res.json();
+export async function getJson(url: string) {
+	const host = new URL(url).hostname;
+	if (host === 'api.deezer.com' && Date.now() < deezerPausedUntil) throw new Error('Deezer lookups are temporarily paused.');
+	const gap = host === 'api.deezer.com' ? 125 : host === 'ws.audioscrobbler.com' ? 250 : 0;
+	const request = async () => {
+		const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10_000) });
+		if (!res.ok) throw Object.assign(new Error(`${host} returned ${res.status}`), { status: res.status, retryAfter: Number(res.headers.get('retry-after')) });
+		const body = await res.json();
+		if (host === 'api.deezer.com' && body.error) throw Object.assign(new Error('Deezer lookup failed'), { status: body.error.code === 4 ? 429 : 502 });
+		if (host === 'ws.audioscrobbler.com' && Number(body.error) === 29) throw Object.assign(new Error('Last.fm rate limit reached'), { status: 429, code: 29 });
+		return body;
+	};
+	if (!gap) return request();
+	// ponytail: one queue per provider in this process; use a shared limiter if the app gains multiple workers.
+	const queue = queues.get(host) ?? { pending: Promise.resolve(), next: 0 };
+	queues.set(host, queue);
+	const result = queue.pending.then(async () => {
+		await new Promise((resolve) => setTimeout(resolve, Math.max(0, queue.next - Date.now())));
+		queue.next = Date.now() + gap;
+		try {
+			return await request();
+		} catch (e) {
+			const error = e as { status?: number; retryAfter?: number };
+			if (error.status === 429) queue.next = Date.now() + Math.max(10, error.retryAfter || 0) * 1000;
+			if (host === 'api.deezer.com') {
+				queue.next = Math.max(queue.next, Date.now() + (error.status === 429 ? 10_000 : 30_000));
+				deezerPausedUntil = queue.next;
+			}
+			throw e;
+		}
+	});
+	queue.pending = result.then(() => {}, () => {});
+	return result;
 }
 
-const same = (a?: string | null, b?: string | null) => !!a && !!b && key(a) === key(b);
+export const same = (a: unknown, b: unknown) => typeof a === 'string' && typeof b === 'string' && !!a && !!b && key(a) === key(b);
 // Deezer's "no artist photo" URL has an empty image hash: /images/artist//...
 export const realPicture = (url?: string) => (url && !url.includes('/artist//') ? url : null);
 
@@ -26,8 +57,6 @@ const nextTrack = (state: number) =>
 		state
 	);
 
-let deezerPausedUntil = 0;
-
 /** One Deezer search per song gives album cover, single cover, artist photo and length. */
 export async function deezerStep() {
 	if (Date.now() < deezerPausedUntil) return false;
@@ -37,12 +66,6 @@ export async function deezerStep() {
 	try {
 		res = await getJson('https://api.deezer.com/search?' + new URLSearchParams({ q: `${t.artist} ${t.name}`, limit: '15' }));
 	} catch {
-		deezerPausedUntil = Date.now() + 30_000;
-		return false;
-	}
-	if (res.error) {
-		// code 4 = quota; back off and retry the same song later
-		deezerPausedUntil = Date.now() + (res.error.code === 4 ? 10_000 : 60_000);
 		return false;
 	}
 	const hits: any[] = (res.data ?? []).filter((r: any) => same(r.artist?.name, t.artist));
@@ -147,6 +170,6 @@ export async function genreStep() {
 
 export async function lastfm(params: Record<string, string>) {
 	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ ...params, api_key: process.env.LASTFM_API_KEY ?? '', format: 'json' }));
-	if (r.error) throw new Error(r.message);
+	if (r.error) throw Object.assign(new Error(r.message), { code: Number(r.error) });
 	return r;
 }

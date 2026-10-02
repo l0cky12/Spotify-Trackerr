@@ -1,6 +1,6 @@
 <script lang="ts">
 	let { src, alt, size = 48, round = false }: { src?: string | null; alt: string; size?: number; round?: boolean } = $props();
-	let failed = $state(false);
+	let failedSrc = $state<string | null | undefined>();
 	const initials = $derived(
 		alt
 			.split(/\s+/)
@@ -11,8 +11,8 @@
 	);
 </script>
 
-{#if src && !failed}
-	<img class="cover" class:round {src} {alt} width={size} height={size} loading="lazy" onerror={() => (failed = true)} style:--s="{size}px" />
+{#if src && src !== failedSrc}
+	<img class="cover" class:round {src} {alt} width={size} height={size} loading="lazy" onerror={() => (failedSrc = src)} style:--s="{size}px" />
 {:else}
 	<span class="cover ph" class:round style:--s="{size}px" role="img" aria-label={alt}>{initials}</span>
 {/if}

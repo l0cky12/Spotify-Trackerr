@@ -4,7 +4,7 @@ import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
 import { LINK_LIFETIME, serverAppConfigured, unlink } from '#lib/server/spotify.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
-import { lastfmLoginEnabled } from '#lib/server/recs.js';
+import { lastfmLoginEnabled, setLastfmUser } from '#lib/server/recs.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -87,7 +87,7 @@ export const actions = {
 		return { section: 'ownApp', saved: true };
 	},
 	lastfmUnlink: async ({ locals }) => {
-		run('UPDATE users SET lastfm_user = NULL WHERE id = ?', locals.user!.id);
+		setLastfmUser(locals.user!.id, null);
 		return { section: 'lastfm', saved: true };
 	},
 	import: async ({ request, locals }) => {

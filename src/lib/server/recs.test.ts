@@ -32,11 +32,14 @@ test('Discover skips what the user already played, takes seeds from Last.fm, and
 		'user.gettoptracks': { toptracks: { track: [{ name: 'Seed Song', artist: { name: 'Seed' } }] } },
 		'artist.getsimilar': { similarartists: { artist: [{ name: 'Heard' }, { name: 'New Band' }, { name: 'Seed' }] } },
 		'track.getsimilar': { similartracks: { track: [{ name: 'Old Song', artist: { name: 'Heard' }, match: '1' }, { name: 'Fresh', artist: { name: 'Heard' }, match: '1' }] } },
+		'artist.getInfo': { artist: { stats: { userplaycount: '0' } } },
+		'track.getInfo': { track: { userplaycount: '0' } },
+		'album.getInfo': { album: { userplaycount: '0' } },
 		'artist.gettopalbums': { topalbums: { album: [{ name: 'Debut', artist: { name: 'New Band' }, image: img('https://lastfm/debut.jpg') }] } }
 	};
 	vi.stubGlobal('fetch', async (url: string) => {
 		const u = new URL(url);
-		const body = u.host === 'ws.audioscrobbler.com' ? lastfm[u.searchParams.get('method')!] : { data: [{ picture_big: 'https://deezer/artist.jpg', album: { cover_big: 'https://deezer/song.jpg' } }] };
+		const body = u.host === 'ws.audioscrobbler.com' ? lastfm[u.searchParams.get('method')!] : { data: [{ name: 'New Band', title: 'Fresh', artist: { name: 'Heard' }, picture_big: 'https://deezer/artist.jpg', album: { cover_big: 'https://deezer/song.jpg' } }] };
 		return new Response(JSON.stringify(body));
 	});
 
