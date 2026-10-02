@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    # Only reachable from this machine; Tailscale and Cloudflare Tunnel put HTTPS in front.
+    ports:
+      - 127.0.0.1:3457:3000
+
+  # Off until you have a tunnel token: docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app

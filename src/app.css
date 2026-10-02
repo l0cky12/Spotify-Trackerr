@@ -1,0 +1,151 @@
+:root {
+	color-scheme: dark;
+	--page: #131118;
+	--surface: #1c1922;
+	--surface-2: #26222e;
+	--surface-3: #322d3b;
+	--ink: #f4f0f7;
+	--ink-2: #bdb6c8;
+	--muted: #8b8596;
+	--grid: #2c2834;
+	--axis: #3d3846;
+	--border: rgba(255, 255, 255, 0.1);
+	--action: #2f74c9;
+	--good: #0ca30c;
+	--critical: #e66767;
+	/* categorical, validated on --surface */
+	--series-1: #3987e5;
+	--series-2: #d95926;
+	--series-3: #199e70;
+	--series-4: #c98500;
+	--series-5: #d55181;
+	--series-6: #008300;
+	--series-7: #9085e9;
+	--series-8: #e66767;
+	font-family: 'Archivo Variable', system-ui, sans-serif;
+	font-size: 15px;
+	line-height: 1.5;
+	background: var(--page);
+	color: var(--ink);
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+}
+a {
+	color: inherit;
+	text-decoration-color: var(--axis);
+	text-underline-offset: 3px;
+}
+a:hover {
+	text-decoration-color: currentColor;
+}
+:focus-visible {
+	outline: 2px solid var(--series-1);
+	outline-offset: 2px;
+}
+h1,
+h2,
+h3 {
+	line-height: 1.15;
+	margin: 0;
+	font-weight: 700;
+}
+h1 {
+	font-size: 2rem;
+	font-stretch: 85%;
+}
+h2 {
+	font-size: 1.05rem;
+	font-weight: 600;
+}
+.muted {
+	color: var(--muted);
+}
+.panel {
+	background: var(--surface);
+	border-radius: 10px;
+	padding: 18px 20px;
+	min-width: 0;
+}
+.panel > h2 {
+	margin-bottom: 14px;
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	align-items: baseline;
+}
+.panel > h2 small {
+	font-weight: 400;
+	color: var(--ink-2);
+	font-size: 0.82rem;
+}
+button,
+.button {
+	font: inherit;
+	font-size: 0.9rem;
+	background: var(--action);
+	color: #fff;
+	border: 0;
+	border-radius: 6px;
+	padding: 8px 14px;
+	cursor: pointer;
+	text-decoration: none;
+	display: inline-block;
+}
+button.secondary,
+.button.secondary,
+.toggle button {
+	background: var(--surface-2);
+	color: var(--ink);
+}
+button.danger {
+	background: #a33232;
+}
+button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.toggle {
+	display: flex;
+	gap: 2px;
+}
+.toggle button {
+	padding: 4px 10px;
+	font-size: 0.8rem;
+}
+.toggle button[aria-pressed='true'] {
+	background: var(--ink);
+	color: var(--page);
+}
+input,
+select {
+	font: inherit;
+	background: var(--surface-2);
+	color: var(--ink);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+label {
+	display: grid;
+	gap: 4px;
+	font-size: 0.9rem;
+}
+.error {
+	color: var(--critical);
+}
+.ok {
+	color: var(--good);
+}
+.num {
+	font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+	* {
+		transition: none !important;
+		animation: none !important;
+	}
+}
