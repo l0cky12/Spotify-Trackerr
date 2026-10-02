@@ -149,6 +149,24 @@
 		</form>
 	</section>
 
+	<section class="panel" id="listenbrainz">
+		<h2>ListenBrainz</h2>
+		<p class="muted">
+			Discover uses ListenBrainz Radio to find new songs. Make a free account at
+			<a href="https://listenbrainz.org/settings/" target="_blank" rel="noopener">listenbrainz.org/settings</a>, copy your user token and paste it here.
+		</p>
+		{#if !data.u.hasListenbrainz && data.serverListenbrainz}<p class="muted small">Until you add your own, Discover uses this server's token.</p>{/if}
+		<form method="POST" action="?/listenbrainz" use:enhance class="stack">
+			<label>User token <input name="token" type="password" placeholder={data.u.hasListenbrainz ? 'Saved' : ''} autocomplete="off" /></label>
+			<div class="row">
+				<button>Save token</button>
+				{#if data.u.hasListenbrainz}<button class="secondary" name="clear" value="1">Remove token</button>{/if}
+			</div>
+			{#if msg('listenbrainz')?.saved}<p class="ok">Saved{#if msg('listenbrainz')?.lbUser} as {msg('listenbrainz')?.lbUser}{/if}. <a href="/discover">Go to Discover</a></p>{/if}
+			{#if msg('listenbrainz')?.error}<p class="error">{msg('listenbrainz')?.error}</p>{/if}
+		</form>
+	</section>
+
 	{#if data.admin}
 		<section class="panel wide" id="admin">
 			<h2>Admin</h2>

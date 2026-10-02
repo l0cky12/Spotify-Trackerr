@@ -40,7 +40,7 @@ https name.
    hostname to `ALLOWED_HOSTS` and as a Spotify redirect URI, then run
    `docker compose --profile tunnel up -d`.
 3. **Optional keys.** `LASTFM_API_KEY` enables similar songs/artists and better genres.
-   `LISTENBRAINZ_TOKEN` enables the Discover playlist. Features hide when a key is missing.
+   `LISTENBRAINZ_TOKEN` enables the Discover playlist for everyone; each person can also add their own token in Settings. Features hide when a key is missing.
 4. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
    and upload the zip in Settings when it arrives (up to 30 days).
 

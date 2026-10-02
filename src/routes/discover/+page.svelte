@@ -19,7 +19,7 @@
 
 {#if !data.enabled}
 	<section class="panel">
-		<p>Discover needs a ListenBrainz token. The admin can add <code>LISTENBRAINZ_TOKEN</code> to the server settings; a free account at listenbrainz.org provides one.</p>
+		<p>Discover needs a ListenBrainz token. <a href="/settings#listenbrainz">Add yours in Settings</a>; a free account at listenbrainz.org provides one.</p>
 	</section>
 {:else}
 	<div class="actions">
@@ -55,10 +55,5 @@
 		display: flex;
 		gap: 10px;
 		margin-bottom: 16px;
-	}
-	code {
-		background: var(--surface-2);
-		padding: 1px 5px;
-		border-radius: 4px;
 	}
 </style>

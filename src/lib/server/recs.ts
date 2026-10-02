@@ -3,7 +3,16 @@ import { key } from './ingest.js';
 import { lastfm } from './enrich.js';
 
 export const lastfmEnabled = () => !!process.env.LASTFM_API_KEY;
-export const listenbrainzEnabled = () => !!process.env.LISTENBRAINZ_TOKEN;
+/** The user's own ListenBrainz token from Settings, else the server-wide one from .env. */
+export const listenbrainzToken = (user: App.Locals['user']): string | undefined => user?.listenbrainz_token || process.env.LISTENBRAINZ_TOKEN || undefined;
+
+/** Asks ListenBrainz whether a token is real. Returns its username, or null if the token is invalid. */
+export async function checkListenbrainzToken(token: string): Promise<string | null> {
+	const res = await fetch('https://api.listenbrainz.org/1/validate-token', { headers: { Authorization: `Token ${token}`, 'User-Agent': 'SpotifyTrackerr/1.0' } });
+	if (!res.ok) throw new Error(`ListenBrainz didn't answer (${res.status}). Try again later.`);
+	const j = await res.json();
+	return j.valid ? String(j.user_name ?? '') : null;
+}
 
 export type Rec = { title?: string; artist: string; trackId?: number | null; artistId?: number | null; spotifyId?: string | null };
 
@@ -41,7 +50,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * ~30 songs the user hasn't played, from ListenBrainz Radio seeded with their top artists of the last 30 days.
  * One radio request per artist (1/s) so one unknown artist name doesn't sink the whole prompt.
  */
-export async function buildDiscover(userId: number) {
+export async function buildDiscover(userId: number, token: string) {
 	const since = Math.floor(Date.now() / 1000) - 30 * 86400;
 	let seeds = all(
 		'SELECT a.name FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ? AND p.played_at >= ? GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 5',
@@ -59,7 +68,7 @@ export async function buildDiscover(userId: number) {
 		const name = String(s.name).replace(/[()]/g, '');
 		const res = await fetch(
 			'https://api.listenbrainz.org/1/explore/lb-radio?' + new URLSearchParams({ prompt: `artist:(${name})`, mode: 'easy' }),
-			{ headers: { Authorization: `Token ${process.env.LISTENBRAINZ_TOKEN}`, 'User-Agent': 'SpotifyTrackerr/1.0' } }
+			{ headers: { Authorization: `Token ${token}`, 'User-Agent': 'SpotifyTrackerr/1.0' } }
 		).catch(() => null);
 		const json = res?.ok ? await res.json().catch(() => null) : null;
 		const tracks: any[] = json?.payload?.jspf?.playlist?.track ?? [];
