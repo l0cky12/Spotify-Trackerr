@@ -23,6 +23,11 @@ Once you have a Cloudflare tunnel token in `.env`, add the tunnel with
 
 Open https://hermes.tail36fb9.ts.net:8447. The first account you create is the admin.
 
+If a device says the name can't be found, its Tailscale DNS is off. Turn on *Use Tailscale DNS* in
+its Tailscale app (and switch off Chrome's *Use secure DNS*), or use http://100.100.64.121:8448
+(set `TAILSCALE_IP` and add that address to `ALLOWED_HOSTS`). Spotify sign-in only works from the
+https name.
+
 ## Setup checklist
 
 1. **Spotify app.** At https://developer.spotify.com/dashboard create an app (Web API), add both
