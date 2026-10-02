@@ -1,4 +1,4 @@
-import { get, run } from './db.js';
+import { get, run, setting, setSetting, unseal } from './db.js';
 import { key } from './ingest.js';
 import { appApi, SpotifyError } from './spotify.js';
 
@@ -154,7 +154,7 @@ export async function genreStep() {
 			if (e instanceof SpotifyError && e.status === 429) spotifyGenresPausedUntil = Date.now() + 3600_000;
 		}
 	}
-	if (!genres.length && process.env.LASTFM_API_KEY) {
+	if (!genres.length && lastfmApp().key) {
 		const r = await lastfm({ method: 'artist.gettoptags', artist: a.name, autocorrect: '1' }).catch(() => null);
 		if (!r) return false; // network trouble: retry later
 		genres = (r.toptags?.tag ?? [])
@@ -168,8 +168,21 @@ export async function genreStep() {
 	return true;
 }
 
+/** The server's Last.fm app: from .env if set there, otherwise the one an admin saved in Settings. */
+export function lastfmApp() {
+	if (process.env.LASTFM_API_KEY) return { key: process.env.LASTFM_API_KEY, secret: process.env.LASTFM_SHARED_SECRET ?? '', fromEnv: true };
+	return { key: setting('lastfm_api_key') ?? '', secret: unseal(setting('lastfm_secret')) ?? '', fromEnv: false };
+}
+
+/** Once a Last.fm key exists, artists that ended up without genres get another try with Last.fm tags. */
+export function retryGenresWithLastfm() {
+	if (!lastfmApp().key || setting('lastfm_seen') === '1') return;
+	run('UPDATE artists SET genres_done = 0 WHERE NOT EXISTS (SELECT 1 FROM artist_genres g WHERE g.artist_id = artists.id)');
+	setSetting('lastfm_seen', '1');
+}
+
 export async function lastfm(params: Record<string, string>) {
-	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ ...params, api_key: process.env.LASTFM_API_KEY ?? '', format: 'json' }));
+	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ api_key: lastfmApp().key, ...params, format: 'json' }));
 	if (r.error) throw Object.assign(new Error(r.message), { code: Number(r.error) });
 	return r;
 }

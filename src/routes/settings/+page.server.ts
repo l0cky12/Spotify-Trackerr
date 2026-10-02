@@ -1,10 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { all, get, run, setting, setSetting } from '#lib/server/db.js';
+import { all, get, run, seal, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
 import { LINK_LIFETIME, serverAppConfigured, unlink } from '#lib/server/spotify.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
-import { lastfmLoginEnabled, setLastfmUser } from '#lib/server/recs.js';
+import { checkLastfmApp, lastfmLoginEnabled, setLastfmUser } from '#lib/server/recs.js';
+import { lastfmApp, retryGenresWithLastfm } from '#lib/server/enrich.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -22,8 +23,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			linkExpires: u.spotify_authorized_at ? (u.spotify_authorized_at as number) + LINK_LIFETIME : null,
 			ownClientId: u.own_client_id as string | null,
 			usesOwnApp: !!u.spotify_own_app,
-			lastfmUser: u.lastfm_user as string | null,
-			isAdmin: !!u.is_admin
+			lastfmUser: u.lastfm_user as string | null
 		},
 		serverApp: serverAppConfigured(),
 		lastfmLogin: lastfmLoginEnabled(),
@@ -37,6 +37,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		admin: u.is_admin
 			? {
 					allowSignup: setting('allow_signup') === '1',
+					lastfmFromEnv: lastfmApp().fromEnv,
+					lastfmKey: setting('lastfm_api_key') ?? '',
 					users: all('SELECT id, username, display_name, is_admin, spotify_refresh IS NOT NULL linked, (SELECT COUNT(*) FROM plays WHERE user_id = users.id) plays FROM users ORDER BY id')
 				}
 			: null
@@ -82,12 +84,26 @@ export const actions = {
 			return { section: 'ownApp', saved: true };
 		}
 		if (!/^[a-f0-9]{32}$/i.test(id) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'ownApp', error: 'Client ID and secret are both 32-character codes from the Spotify dashboard.' });
-		// ponytail: secret stored in plain text in the server's database; encrypt at rest if the DB ever leaves this box.
-		run('UPDATE users SET own_client_id = ?, own_client_secret = ? WHERE id = ?', id, secret, locals.user!.id);
+		run('UPDATE users SET own_client_id = ?, own_client_secret = ? WHERE id = ?', id, seal(secret), locals.user!.id);
 		return { section: 'ownApp', saved: true };
 	},
 	lastfmUnlink: async ({ locals }) => {
 		setLastfmUser(locals.user!.id, null);
+		return { section: 'lastfm', saved: true };
+	},
+	lastfmApp: async ({ request, locals }) => {
+		requireAdmin(locals);
+		if (lastfmApp().fromEnv) return fail(400, { section: 'lastfm', error: "This server's Last.fm app is set in its .env file; change it there." });
+		const f = await request.formData();
+		const key = String(f.get('api_key') ?? '').trim();
+		const secret = String(f.get('shared_secret') ?? '').trim();
+		if (!/^[a-f0-9]{32}$/i.test(key) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'lastfm', error: 'The API key and shared secret are both 32-character codes from your Last.fm API account page.' });
+		const check = await checkLastfmApp(key, secret);
+		if (check === 'rejected') return fail(400, { section: 'lastfm', error: "Last.fm didn't accept that API key and shared secret. Copy both again from the same app." });
+		if (check === 'unreachable') return fail(502, { section: 'lastfm', error: "Couldn't reach Last.fm to check the key. Try again in a minute." });
+		setSetting('lastfm_api_key', key);
+		setSetting('lastfm_secret', seal(secret));
+		retryGenresWithLastfm();
 		return { section: 'lastfm', saved: true };
 	},
 	import: async ({ request, locals }) => {
