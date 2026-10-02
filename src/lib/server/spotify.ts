@@ -1,7 +1,7 @@
 import { get, all, run, now, type Row } from './db.js';
 import { upsertArtist, upsertAlbum, upsertTrack, insertPlay, key } from './ingest.js';
 
-export const SCOPES = 'user-read-recently-played user-read-currently-playing playlist-modify-private';
+export const SCOPES = 'user-read-recently-played user-read-currently-playing';
 /** Spotify ends a link 6 months after the user authorizes; refreshing doesn't reset it. */
 export const LINK_LIFETIME = 182 * 86400;
 
@@ -207,25 +207,4 @@ export async function nowPlaying(userId: number) {
 	}
 	nowPlayingCache.set(userId, { at: Date.now(), value });
 	return value;
-}
-
-/** Creates a private playlist on the user's Spotify account; looks up each song's Spotify ID if we don't have one. */
-export async function savePlaylist(user: Row, name: string, songs: { artist: string; title: string; spotifyId?: string | null }[]) {
-	const uris: string[] = [];
-	for (const s of songs) {
-		let id = s.spotifyId;
-		if (!id) {
-			const q = encodeURIComponent(`track:${s.title} artist:${s.artist}`);
-			const r = await api(user, `/search?type=track&limit=1&q=${q}`).catch(() => null);
-			id = r?.tracks?.items?.[0]?.id;
-		}
-		if (id) uris.push(`spotify:track:${id}`);
-	}
-	if (!uris.length) throw new Error('None of these songs could be found on Spotify.');
-	const pl = await api(user, '/me/playlists', {
-		method: 'POST',
-		body: JSON.stringify({ name, public: false, description: 'Made by Spotify Trackerr' })
-	});
-	await api(user, `/playlists/${pl.id}/items`, { method: 'POST', body: JSON.stringify({ uris: uris.slice(0, 100) }) });
-	return { url: pl.external_urls?.spotify as string, count: uris.length };
 }

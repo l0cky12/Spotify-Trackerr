@@ -1,27 +1,67 @@
-import { get, all, cached, run } from './db.js';
+import { createHash } from 'node:crypto';
+import { get, all, cached, run, now, tx, type Row } from './db.js';
 import { key } from './ingest.js';
-import { lastfm } from './enrich.js';
+import { lastfm, realPicture, getJson, same } from './enrich.js';
+
+const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
 
 export const lastfmEnabled = () => !!process.env.LASTFM_API_KEY;
-/** The user's own ListenBrainz token from Settings, else the server-wide one from .env. */
-export const listenbrainzToken = (user: App.Locals['user']): string | undefined => user?.listenbrainz_token || process.env.LISTENBRAINZ_TOKEN || undefined;
+/** Signing in with Last.fm also needs the shared secret from the same Last.fm app page. */
+export const lastfmLoginEnabled = () => lastfmEnabled() && !!process.env.LASTFM_SHARED_SECRET;
 
-/** Asks ListenBrainz whether a token is real. Returns its username, or null if the token is invalid. */
-export async function checkListenbrainzToken(token: string): Promise<string | null> {
-	const res = await fetch('https://api.listenbrainz.org/1/validate-token', { headers: { Authorization: `Token ${token}`, 'User-Agent': 'SpotifyTrackerr/1.0' } });
-	if (!res.ok) throw new Error(`ListenBrainz didn't answer (${res.status}). Try again later.`);
-	const j = await res.json();
-	return j.valid ? String(j.user_name ?? '') : null;
+/** Last.fm's api_sig: md5 of every param as name+value, sorted by name, then the shared secret. */
+export const lastfmSig = (params: Record<string, string>, secret: string) =>
+	createHash('md5')
+		.update(Object.keys(params).sort().map((k) => k + params[k]).join('') + secret)
+		.digest('hex');
+
+export const lastfmAuthUrl = (cb: string) => 'https://www.last.fm/api/auth/?' + new URLSearchParams({ api_key: process.env.LASTFM_API_KEY!, cb });
+
+/** Trades the token from Last.fm's sign-in redirect for the Last.fm username it belongs to. */
+export async function lastfmUsername(token: string) {
+	const p = { method: 'auth.getSession', api_key: process.env.LASTFM_API_KEY!, token };
+	const r = await lastfm({ ...p, api_sig: lastfmSig(p, process.env.LASTFM_SHARED_SECRET!) });
+	if (!validName(r.session?.name)) throw new Error('Last.fm returned an invalid username.');
+	return r.session.name as string;
 }
 
-export type Rec = { title?: string; artist: string; trackId?: number | null; artistId?: number | null; spotifyId?: string | null };
+export function setLastfmUser(userId: number, username: string | null) {
+	tx(() => {
+		run('UPDATE users SET lastfm_user = ? WHERE id = ?', username, userId);
+		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
+	});
+}
 
-/** Links a recommendation to our own pages when the song or artist is already in the library. */
+export type Rec = {
+	artist: string;
+	title?: string;
+	album?: string;
+	image?: string | null;
+	/** The seed artist or song this pick came from. */
+	why?: string;
+	trackId?: number | null;
+	albumId?: number | null;
+	artistId?: number | null;
+	spotifyId?: string | null;
+};
+
+/** Links a recommendation to our own pages, and borrows our artwork, when the song, album or artist is already in the library. */
 function localize(r: Rec): Rec {
-	const a = get('SELECT id FROM artists WHERE key = ?', key(r.artist));
+	const a = get('SELECT id, COALESCE(image_override, image) image FROM artists WHERE key = ?', key(r.artist));
 	if (!a) return r;
-	const t = r.title ? get('SELECT id, spotify_id FROM tracks WHERE artist_id = ? AND key = ?', a.id, key(r.title)) : null;
-	return { ...r, artistId: a.id, trackId: t?.id ?? null, spotifyId: t?.spotify_id ?? null };
+	if (r.title) {
+		const t = get(
+			'SELECT t.id, t.spotify_id, COALESCE(t.image_override, t.image, al.image_override, al.image) image FROM tracks t LEFT JOIN albums al ON al.id = t.album_id WHERE t.artist_id = ? AND t.key = ?',
+			a.id,
+			key(r.title)
+		);
+		return { ...r, artistId: a.id, trackId: t?.id ?? null, spotifyId: t?.spotify_id ?? null, image: t?.image ?? r.image ?? null };
+	}
+	if (r.album) {
+		const al = get('SELECT id, COALESCE(image_override, image) image FROM albums WHERE artist_id = ? AND key = ?', a.id, key(r.album));
+		return { ...r, artistId: a.id, albumId: al?.id ?? null, image: al?.image ?? r.image ?? null };
+	}
+	return { ...r, artistId: a.id, image: a.image ?? r.image ?? null };
 }
 
 const WEEK = 7 * 86400;
@@ -32,7 +72,7 @@ export async function similarTracks(artist: string, title: string): Promise<Rec[
 		const r = await lastfm({ method: 'track.getsimilar', artist, track: title, autocorrect: '1', limit: '15' });
 		return (r.similartracks?.track ?? []).filter((t: any) => Number(t.match) >= 0.05).map((t: any) => ({ title: t.name, artist: t.artist?.name }));
 	}).catch(() => []);
-	return list.map(localize);
+	return list.filter((r: Rec) => validName(r.artist) && validName(r.title)).map(localize);
 }
 
 export async function similarArtists(artist: string): Promise<Rec[]> {
@@ -41,72 +81,155 @@ export async function similarArtists(artist: string): Promise<Rec[]> {
 		const r = await lastfm({ method: 'artist.getsimilar', artist, autocorrect: '1', limit: '12' });
 		return (r.similarartists?.artist ?? []).map((a: any) => ({ artist: a.name }));
 	}).catch(() => []);
-	return list.map(localize);
+	return list.filter((r: Rec) => validName(r.artist)).map(localize);
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * ~30 songs the user hasn't played, from ListenBrainz Radio seeded with their top artists of the last 30 days.
- * One radio request per artist (1/s) so one unknown artist name doesn't sink the whole prompt.
- */
-export async function buildDiscover(userId: number, token: string) {
-	const since = Math.floor(Date.now() / 1000) - 30 * 86400;
-	let seeds = all(
-		'SELECT a.name FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ? AND p.played_at >= ? GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 5',
-		userId,
-		since
-	);
-	if (!seeds.length) seeds = all('SELECT a.name FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ? GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 5', userId);
-	const heard = new Set(
-		all('SELECT DISTINCT a.key ak, t.key tk FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ?', userId).map(
-			(r) => r.ak + '\0' + r.tk
-		)
-	);
-	const perSeed: Rec[][] = [];
-	for (const s of seeds) {
-		const name = String(s.name).replace(/[()]/g, '');
-		const res = await fetch(
-			'https://api.listenbrainz.org/1/explore/lb-radio?' + new URLSearchParams({ prompt: `artist:(${name})`, mode: 'easy' }),
-			{ headers: { Authorization: `Token ${token}`, 'User-Agent': 'SpotifyTrackerr/1.0' } }
-		).catch(() => null);
-		const json = res?.ok ? await res.json().catch(() => null) : null;
-		const tracks: any[] = json?.payload?.jspf?.playlist?.track ?? [];
-		perSeed.push(
-			tracks
-				.map((t) => ({ title: String(t.title ?? ''), artist: String(t.creator ?? '') }))
-				.filter((t) => t.title && t.artist && !heard.has(key(t.artist) + '\0' + key(t.title)))
-		);
-		await sleep(1100);
-	}
-	// Interleave seeds so one artist's radio doesn't fill the list.
+// Last.fm's grey star, served when it has no real picture.
+const LASTFM_BLANK = '2a96cbd8b46e442fc41c2b86b821562f';
+
+async function topAlbum(artist: string): Promise<Rec | null> {
+	const a = await cached(`lfm:topalbum:${key(artist)}`, WEEK, async () => {
+		const r = await lastfm({ method: 'artist.gettopalbums', artist, autocorrect: '1', limit: '1' });
+		const al = r.topalbums?.album?.[0];
+		if (!validName(al?.name) || al.name === '(null)') return null;
+		const img: string = al.image?.find((i: any) => i.size === 'extralarge')?.['#text'] ?? '';
+		return { artist: validName(al.artist?.name) ? al.artist.name : artist, album: al.name as string, image: typeof img === 'string' && img && !img.includes(LASTFM_BLANK) ? img : null };
+	}).catch(() => null);
+	return a && localize(a);
+}
+
+/** Cover art from Deezer for picks Last.fm and our library have no picture for. */
+async function deezerImage(r: Rec): Promise<string | null> {
+	const [path, q] = r.title ? ['search', `${r.artist} ${r.title}`] : r.album ? ['search/album', `${r.artist} ${r.album}`] : ['search/artist', r.artist];
+	return cached(`deezer:cover:${JSON.stringify([path, key(r.artist), key(r.title ?? r.album ?? '')])}`, WEEK, async () => {
+		const res = await getJson(`https://api.deezer.com/${path}?` + new URLSearchParams({ q, limit: '15' }));
+		const x = res.data?.find((x: any) => r.title
+			? same(x.artist?.name, r.artist) && (same(x.title, r.title) || same(x.title_short, r.title))
+			: r.album ? same(x.artist?.name, r.artist) && same(x.title, r.album) : same(x.name, r.artist));
+		return (r.title ? x?.album?.cover_big : r.album ? x?.cover_big : realPicture(x?.picture_big)) ?? null;
+	}).catch(() => null);
+}
+
+/** Check only the candidate picks against Last.fm's lifetime user counts, rather than downloading history. */
+async function unheard(list: Rec[], username: string | null): Promise<Rec[]> {
+	if (!username) return list;
 	const out: Rec[] = [];
+	for (const r of list) {
+		const kind = r.title ? 'track' : r.album ? 'album' : 'artist';
+		let info;
+		try {
+			info = await lastfm({ method: `${kind}.getInfo`, artist: r.artist, username, autocorrect: '1', ...(r.title ? { track: r.title } : r.album ? { album: r.album } : {}) });
+		} catch (e) {
+			if ((e as { code?: number }).code === 6) continue; // Unknown candidate: don't recommend unverified music.
+			throw new Error('Could not check your Last.fm listening history. Try again later.');
+		}
+		const count = kind === 'artist' ? info.artist?.stats?.userplaycount : info[kind]?.userplaycount;
+		const plays = typeof count === 'string' && /^\d+$/.test(count) ? Number(count) : typeof count === 'number' ? count : NaN;
+		if (!Number.isSafeInteger(plays) || plays < 0)
+			throw new Error('Last.fm did not return a listening count. Try again later.');
+		if (plays === 0) out.push(r);
+	}
+	return out;
+}
+
+/** Round-robin across the seeds' lists so one seed doesn't fill the shelf; drops repeats. */
+export function interleave<T>(lists: T[][], id: (x: T) => string, max: number): T[] {
+	const out: T[] = [];
 	const seen = new Set<string>();
-	for (let i = 0; out.length < 30 && perSeed.some((l) => l[i]); i++) {
-		for (const l of perSeed) {
-			const t = l[i];
-			if (!t) continue;
-			const k = key(t.artist) + '\0' + key(t.title!);
-			if (seen.has(k)) continue;
-			seen.add(k);
-			out.push(localize(t));
-			if (out.length >= 30) break;
+	for (let i = 0; out.length < max && lists.some((l) => i < l.length); i++) {
+		for (const l of lists) {
+			const x = l[i];
+			if (!x || seen.has(id(x))) continue;
+			seen.add(id(x));
+			out.push(x);
+			if (out.length >= max) break;
 		}
 	}
-	const value = { seeds: seeds.map((s) => s.name as string), songs: out, at: Math.floor(Date.now() / 1000) };
+	return out;
+}
+
+/** The user's top 5 for the last 30 days, or all time if they played nothing lately. */
+function topLocal(sql: string, userId: number) {
+	const rows = all(sql, userId, now() - 30 * 86400);
+	return rows.length ? rows : all(sql, userId, 0);
+}
+
+/**
+ * Artists, albums and songs the user hasn't played, from Last.fm's similar artists and songs.
+ * Seeds are their Last.fm top artists and songs of the last month when they've signed in to Last.fm,
+ * otherwise what they played most here.
+ */
+export async function buildDiscover(user: Row) {
+	let seedArtists: string[] = [];
+	let seedSongs: { artist: string; title: string }[] = [];
+	if (user.lastfm_user) {
+		const q = { user: user.lastfm_user, period: '1month', limit: '5' };
+		const [a, t] = await Promise.all([
+			lastfm({ method: 'user.gettopartists', ...q }),
+			lastfm({ method: 'user.gettoptracks', ...q })
+		]);
+		seedArtists = (Array.isArray(a?.topartists?.artist) ? a.topartists.artist : []).filter((x: any) => validName(x?.name)).map((x: any) => x.name);
+		seedSongs = (Array.isArray(t?.toptracks?.track) ? t.toptracks.track : []).filter((x: any) => validName(x?.name) && validName(x?.artist?.name)).map((x: any) => ({ artist: x.artist.name, title: x.name }));
+	}
+	if (!seedArtists.length)
+		seedArtists = topLocal(
+			'SELECT a.name FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ? AND p.played_at >= ? GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 5',
+			user.id
+		).map((r) => r.name as string);
+	if (!seedSongs.length)
+		seedSongs = topLocal(
+			'SELECT a.name artist, t.name title FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ? AND p.played_at >= ? GROUP BY t.id ORDER BY COUNT(*) DESC LIMIT 5',
+			user.id
+		) as { artist: string; title: string }[];
+
+	const heardArtists = new Set([...seedArtists.map(key), ...all('SELECT DISTINCT a.key FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ?', user.id).map((r) => r.key as string)]);
+	const songKey = (r: { artist: string; title?: string }) => key(r.artist) + '\0' + key(r.title ?? '');
+	const heardSongs = new Set(
+		[...seedSongs.map(songKey), ...all('SELECT DISTINCT a.key ak, t.key tk FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ?', user.id).map(
+			(r) => r.ak + '\0' + r.tk
+		)]
+	);
+
+	const artists = await unheard(interleave(
+		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s)).filter((r) => !heardArtists.has(key(r.artist))).map((r) => ({ ...r, why: s })))),
+		(r) => key(r.artist),
+		12
+	), user.lastfm_user ?? null);
+	const songs = await unheard(interleave(
+		await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title })))),
+		songKey,
+		30
+	), user.lastfm_user ?? null);
+	const albums: Rec[] = [];
+	for (const a of artists) {
+		const al = await topAlbum(a.artist);
+		if (al && (!al.albumId || !get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId))) albums.push({ ...al, why: a.why });
+	}
+	const newAlbums = await unheard(albums, user.lastfm_user ?? null);
+	for (const r of [...artists, ...newAlbums, ...songs]) if (!r.image) r.image = await deezerImage(r);
+
+	const value = { seeds: seedArtists, lastfmUser: user.lastfm_user ?? null, fromLastfm: !!user.lastfm_user, artists, albums: newAlbums, songs, at: now() };
+	if (!artists.length && !songs.length) return value;
 	run(
-		'INSERT INTO cache (key, value, fetched_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
-		`discover:${userId}`,
+		'INSERT INTO cache (key, value, fetched_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND lastfm_user IS ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
+		`discover:${user.id}`,
 		JSON.stringify(value),
-		value.at
+		value.at,
+		user.id,
+		value.lastfmUser
 	);
 	return value;
 }
 
 export function savedDiscover(userId: number) {
 	const r = get('SELECT value FROM cache WHERE key = ?', `discover:${userId}`);
-	return r ? (JSON.parse(r.value) as Awaited<ReturnType<typeof buildDiscover>>) : null;
+	const v = r ? (JSON.parse(r.value) as Awaited<ReturnType<typeof buildDiscover>>) : null;
+	// Picks saved before Discover had shelves were a single song list.
+	return v?.artists && v.lastfmUser === (get('SELECT lastfm_user FROM users WHERE id = ?', userId)?.lastfm_user ?? null) ? v : null;
 }
 
 export const spotifySearchUrl = (r: Rec) =>
-	r.spotifyId ? `https://open.spotify.com/track/${r.spotifyId}` : `https://open.spotify.com/search/${encodeURIComponent(`${r.artist} ${r.title ?? ''}`.trim())}`;
+	r.spotifyId
+		? `https://open.spotify.com/track/${r.spotifyId}`
+		: `https://open.spotify.com/search/${encodeURIComponent(`${r.artist} ${r.title ?? r.album ?? ''}`.trim())}`;

@@ -4,7 +4,7 @@ import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
 import { LINK_LIFETIME, serverAppConfigured, unlink } from '#lib/server/spotify.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
-import { checkListenbrainzToken } from '#lib/server/recs.js';
+import { lastfmLoginEnabled, setLastfmUser } from '#lib/server/recs.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -22,11 +22,11 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			linkExpires: u.spotify_authorized_at ? (u.spotify_authorized_at as number) + LINK_LIFETIME : null,
 			ownClientId: u.own_client_id as string | null,
 			usesOwnApp: !!u.spotify_own_app,
-			hasListenbrainz: !!u.listenbrainz_token,
+			lastfmUser: u.lastfm_user as string | null,
 			isAdmin: !!u.is_admin
 		},
 		serverApp: serverAppConfigured(),
-		serverListenbrainz: !!process.env.LISTENBRAINZ_TOKEN,
+		lastfmLogin: lastfmLoginEnabled(),
 		callback: `${url.origin}/auth/spotify/callback`,
 		imports: all('SELECT * FROM imports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', u.id),
 		pending: get('SELECT COUNT(*) n FROM tracks WHERE enriched != 1')!.n as number,
@@ -86,23 +86,9 @@ export const actions = {
 		run('UPDATE users SET own_client_id = ?, own_client_secret = ? WHERE id = ?', id, secret, locals.user!.id);
 		return { section: 'ownApp', saved: true };
 	},
-	listenbrainz: async ({ request, locals }) => {
-		const f = await request.formData();
-		if (f.get('clear')) {
-			run('UPDATE users SET listenbrainz_token = NULL WHERE id = ?', locals.user!.id);
-			return { section: 'listenbrainz', saved: true };
-		}
-		const token = String(f.get('token') ?? '').trim();
-		if (!/^[\w-]{8,128}$/.test(token)) return fail(400, { section: 'listenbrainz', error: 'Paste the user token from listenbrainz.org/settings.' });
-		try {
-			const name = await checkListenbrainzToken(token);
-			if (name === null) return fail(400, { section: 'listenbrainz', error: "ListenBrainz says that token isn't valid. Copy it again from listenbrainz.org/settings." });
-			// ponytail: token stored in plain text, same as own_client_secret above.
-			run('UPDATE users SET listenbrainz_token = ? WHERE id = ?', token, locals.user!.id);
-			return { section: 'listenbrainz', saved: true, lbUser: name };
-		} catch (e) {
-			return fail(502, { section: 'listenbrainz', error: (e as Error).message });
-		}
+	lastfmUnlink: async ({ locals }) => {
+		setLastfmUser(locals.user!.id, null);
+		return { section: 'lastfm', saved: true };
 	},
 	import: async ({ request, locals }) => {
 		const files = (await request.formData()).getAll('files').filter((f): f is File => f instanceof File && f.size > 0);

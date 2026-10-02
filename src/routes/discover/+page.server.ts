@@ -1,34 +1,27 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { buildDiscover, savedDiscover, listenbrainzToken, spotifySearchUrl } from '#lib/server/recs.js';
-import { savePlaylist, SpotifyError } from '#lib/server/spotify.js';
+import { buildDiscover, savedDiscover, lastfmEnabled, spotifySearchUrl, type Rec } from '#lib/server/recs.js';
+
+const withUrl = (l: Rec[]) => l.map((r) => ({ ...r, url: spotifySearchUrl(r) }));
 
 export const load: PageServerLoad = ({ locals }) => {
 	const saved = savedDiscover(locals.user!.id);
 	return {
-		enabled: !!listenbrainzToken(locals.user),
-		linked: !!locals.user!.spotify_refresh,
-		playlist: saved && { ...saved, songs: saved.songs.map((s) => ({ ...s, url: spotifySearchUrl(s) })) }
+		enabled: lastfmEnabled(),
+		lastfmUser: locals.user!.lastfm_user as string | null,
+		picks: saved && { ...saved, artists: withUrl(saved.artists), albums: withUrl(saved.albums), songs: withUrl(saved.songs) }
 	};
 };
 
 export const actions = {
 	refresh: async ({ locals }) => {
-		const token = listenbrainzToken(locals.user);
-		if (!token) return fail(400, { error: 'Discover needs a ListenBrainz token. Add yours in Settings.' });
-		const r = await buildDiscover(locals.user!.id, token);
-		if (!r.songs.length) return fail(502, { error: "ListenBrainz didn't return any new songs for your top artists. Try again later." });
-		return { refreshed: true };
-	},
-	save: async ({ locals }) => {
-		const saved = savedDiscover(locals.user!.id);
-		if (!saved) return fail(400, { error: 'Make a playlist first.' });
+		if (!lastfmEnabled()) return fail(400, { error: 'Discover needs Last.fm set up on the server.' });
 		try {
-			const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-			const r = await savePlaylist(locals.user!, `Discover, ${day}`, saved.songs.map((s) => ({ artist: s.artist, title: s.title!, spotifyId: s.spotifyId })));
-			return { savedUrl: r.url, savedCount: r.count };
-		} catch (e) {
-			return fail(502, { error: e instanceof SpotifyError ? `Spotify refused the playlist (${e.status}). Reconnect Spotify in Settings and try again.` : (e as Error).message });
+			const r = await buildDiscover(locals.user!);
+			if (!r.artists.length && !r.songs.length) return fail(502, { error: "Last.fm didn't return any new music for your top artists. Try again later." });
+			return { refreshed: true };
+		} catch {
+			return fail(502, { error: 'Could not refresh your picks or verify your Last.fm history. Try again later.' });
 		}
 	}
 } satisfies Actions;
