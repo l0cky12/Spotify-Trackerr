@@ -44,6 +44,9 @@ https name.
    (new artists, albums and songs), similar songs/artists and better genres, and lets each person
    *Sign in with Last.fm* in Settings so Discover works from their Last.fm top artists and songs.
    Features hide when a key is missing.
+   For *Sign in with ListenBrainz*, register a web app at https://musicbrainz.org/account/applications
+   with callback `https://<your address>/auth/listenbrainz/callback` and put its ID and secret in
+   `MUSICBRAINZ_CLIENT_ID` and `MUSICBRAINZ_CLIENT_SECRET`. Discover then also seeds from ListenBrainz.
 4. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
    and upload the zip in Settings when it arrives (up to 30 days).
 

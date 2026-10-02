@@ -50,3 +50,27 @@ test('Discover skips what the user already played, takes seeds from Last.fm, and
 	expect(r.albums.map((a) => [a.album, a.image])).toEqual([['Debut', 'https://lastfm/debut.jpg']]);
 	expect(r.songs.map((s) => [s.title, s.artistId, s.image])).toEqual([['Fresh', 1, 'https://deezer/song.jpg']]);
 });
+
+test('Discover seeds from ListenBrainz when the user has no Last.fm account', async () => {
+	process.env.LASTFM_API_KEY = 'k';
+	const db = await import('./db.js');
+	const { buildDiscover } = await import('./recs.js');
+	db.run("INSERT INTO users (id, display_name, created_at, listenbrainz_user) VALUES (2, 'b', 0, 'lb-me')");
+	const asked: string[] = [];
+	vi.stubGlobal('fetch', async (url: string) => {
+		const u = new URL(url);
+		const method = u.searchParams.get('method');
+		if (u.host === 'api.listenbrainz.org') {
+			asked.push(u.pathname);
+			return new Response(JSON.stringify(u.pathname.endsWith('/artists') ? { payload: { artists: [{ artist_name: 'LB Seed' }] } } : { payload: { recordings: [] } }));
+		}
+		const body =
+			method === 'artist.getsimilar' ? { similarartists: { artist: [{ name: method + u.searchParams.get('artist') }] } } : u.host === 'ws.audioscrobbler.com' ? {} : { data: [] };
+		return new Response(JSON.stringify(body));
+	});
+	const r = await buildDiscover(db.get('SELECT * FROM users WHERE id = 2'));
+	vi.unstubAllGlobals();
+	expect(asked).toEqual(['/1/stats/user/lb-me/artists', '/1/stats/user/lb-me/recordings']);
+	expect(r.seeds).toEqual(['LB Seed']);
+	expect(r.listenbrainzUser).toBe('lb-me');
+});

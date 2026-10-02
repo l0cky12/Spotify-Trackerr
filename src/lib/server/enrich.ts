@@ -2,7 +2,7 @@ import { get, run } from './db.js';
 import { key } from './ingest.js';
 import { appApi, SpotifyError } from './spotify.js';
 
-const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
+export const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
 const queues = new Map<string, { pending: Promise<void>; next: number }>();
 let deezerPausedUntil = 0;
 
