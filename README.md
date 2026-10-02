@@ -39,8 +39,11 @@ https name.
    that points to `http://app:3000`, and put the token in `CLOUDFLARE_TUNNEL_TOKEN`. Add that
    hostname to `ALLOWED_HOSTS` and as a Spotify redirect URI, then run
    `docker compose --profile tunnel up -d`.
-3. **Optional keys.** `LASTFM_API_KEY` enables similar songs/artists and better genres.
-   `LISTENBRAINZ_TOKEN` enables the Discover playlist for everyone; each person can also add their own token in Settings. Features hide when a key is missing.
+3. **Last.fm (optional).** Create a free app at https://www.last.fm/api/account/create and put its
+   key and shared secret in `LASTFM_API_KEY` and `LASTFM_SHARED_SECRET`. That turns on Discover
+   (new artists, albums and songs), similar songs/artists and better genres, and lets each person
+   *Sign in with Last.fm* in Settings so Discover works from their Last.fm top artists and songs.
+   Features hide when a key is missing.
 4. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
    and upload the zip in Settings when it arrives (up to 30 days).
 

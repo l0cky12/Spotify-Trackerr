@@ -13,7 +13,7 @@
 	// Each form posts to ?section=<id>&/<action> so the same section reopens with its result.
 	const sections = $derived([
 		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || !!data.u.syncError, body: spotifySection },
-		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: !data.u.hasListenbrainz && !data.serverListenbrainz, body: listenbrainzSection },
+		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
 		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
@@ -177,21 +177,29 @@
 </form>
 {/snippet}
 
-{#snippet listenbrainzSection()}
-<p class="muted">
-	Discover uses ListenBrainz Radio to find new songs. Make a free account at
-	<a href="https://listenbrainz.org/settings/" target="_blank" rel="noopener">listenbrainz.org/settings</a>, copy your user token and paste it here.
-</p>
-{#if !data.u.hasListenbrainz && data.serverListenbrainz}<p class="muted small">Until you add your own, Discover uses this server's token.</p>{/if}
-<form method="POST" action="?section=listenbrainz&/listenbrainz" use:enhance class="stack">
-	<label>User token <input name="token" type="password" placeholder={data.u.hasListenbrainz ? 'Saved' : ''} autocomplete="off" /></label>
-	<div class="row">
-		<button>Save token</button>
-		{#if data.u.hasListenbrainz}<button class="secondary" name="clear" value="1">Remove token</button>{/if}
-	</div>
-	{#if msg('listenbrainz')?.saved}<p class="ok">Saved{#if msg('listenbrainz')?.lbUser} as {msg('listenbrainz')?.lbUser}{/if}. <a href="/discover">Go to Discover</a></p>{/if}
-	{#if msg('listenbrainz')?.error}<p class="error">{msg('listenbrainz')?.error}</p>{/if}
-</form>
+{#snippet lastfmSection()}
+{#if data.u.lastfmUser}
+	<p>
+		<span class="ok">Connected</span> as
+		<a href="https://www.last.fm/user/{encodeURIComponent(data.u.lastfmUser)}" target="_blank" rel="noopener">{data.u.lastfmUser}</a>.
+		<a href="/discover">Discover</a> picks new music from your Last.fm top artists and songs of the last month.
+	</p>
+	<form method="POST" action="?section=lastfm&/lastfmUnlink" use:enhance><button class="secondary">Unlink Last.fm</button></form>
+	<p class="muted small">Unlinking makes Discover go back to what you've played here.</p>
+{:else if data.lastfmLogin}
+	<p>Sign in with Last.fm so <a href="/discover">Discover</a> picks new music from everything you scrobble, not just what you've played here.</p>
+	<a class="button" href="/auth/lastfm">Sign in with Last.fm</a>
+{:else}
+	<p class="muted">
+		Last.fm sign-in isn't set up on this server yet.
+		{#if data.u.isAdmin}
+			Create a free app at <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a> and add its
+			<code>LASTFM_API_KEY</code> and <code>LASTFM_SHARED_SECRET</code> to the server's <code>.env</code>.
+		{:else}
+			Ask the admin to set it up.
+		{/if}
+	</p>
+{/if}
 {/snippet}
 
 {#snippet accountSection()}

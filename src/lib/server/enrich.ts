@@ -12,7 +12,7 @@ async function getJson(url: string) {
 
 const same = (a?: string | null, b?: string | null) => !!a && !!b && key(a) === key(b);
 // Deezer's "no artist photo" URL has an empty image hash: /images/artist//...
-const realPicture = (url?: string) => (url && !url.includes('/artist//') ? url : null);
+export const realPicture = (url?: string) => (url && !url.includes('/artist//') ? url : null);
 
 // Picks most-played first.
 // ponytail: GROUP BY over all plays per pick; add a play-count column if this shows up in profiles.
