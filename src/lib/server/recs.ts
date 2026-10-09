@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { get, all, cached, run, now, tx, type Row } from './db.js';
 import { key } from './ingest.js';
-import { lastfm, realPicture, getJson, same } from './enrich.js';
+import { lastfm, lastfmApp, realPicture, getJson, same } from './enrich.js';
 
 const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
 
-export const lastfmEnabled = () => !!process.env.LASTFM_API_KEY;
+export const lastfmEnabled = () => !!lastfmApp().key;
 /** Signing in with Last.fm also needs the shared secret from the same Last.fm app page. */
-export const lastfmLoginEnabled = () => lastfmEnabled() && !!process.env.LASTFM_SHARED_SECRET;
+export const lastfmLoginEnabled = () => lastfmEnabled() && !!lastfmApp().secret;
 
 /** Last.fm's api_sig: md5 of every param as name+value, sorted by name, then the shared secret. */
 export const lastfmSig = (params: Record<string, string>, secret: string) =>
@@ -15,14 +15,28 @@ export const lastfmSig = (params: Record<string, string>, secret: string) =>
 		.update(Object.keys(params).sort().map((k) => k + params[k]).join('') + secret)
 		.digest('hex');
 
-export const lastfmAuthUrl = (cb: string) => 'https://www.last.fm/api/auth/?' + new URLSearchParams({ api_key: process.env.LASTFM_API_KEY!, cb });
+export const lastfmAuthUrl = (cb: string) => 'https://www.last.fm/api/auth/?' + new URLSearchParams({ api_key: lastfmApp().key, cb });
 
 /** Trades the token from Last.fm's sign-in redirect for the Last.fm username it belongs to. */
 export async function lastfmUsername(token: string) {
-	const p = { method: 'auth.getSession', api_key: process.env.LASTFM_API_KEY!, token };
-	const r = await lastfm({ ...p, api_sig: lastfmSig(p, process.env.LASTFM_SHARED_SECRET!) });
+	const app = lastfmApp();
+	const p = { method: 'auth.getSession', api_key: app.key, token };
+	const r = await lastfm({ ...p, api_sig: lastfmSig(p, app.secret) });
 	if (!validName(r.session?.name)) throw new Error('Last.fm returned an invalid username.');
 	return r.session.name as string;
+}
+
+/** Asks Last.fm whether a key and shared secret belong together; auth.getToken fails unless both are right. */
+export async function checkLastfmApp(key: string, secret: string): Promise<'ok' | 'rejected' | 'unreachable'> {
+	const p = { method: 'auth.getToken', api_key: key };
+	try {
+		await lastfm({ ...p, api_sig: lastfmSig(p, secret) });
+		return 'ok';
+	} catch (e) {
+		// Last.fm answers a wrong key or signature with HTTP 403 (error 10 or 13).
+		const { status, code } = e as { status?: number; code?: number };
+		return status === 403 || (code && code !== 29) ? 'rejected' : 'unreachable';
+	}
 }
 
 export function setLastfmUser(userId: number, username: string | null) {

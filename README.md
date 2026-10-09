@@ -39,8 +39,9 @@ https name.
    that points to `http://app:3000`, and put the token in `CLOUDFLARE_TUNNEL_TOKEN`. Add that
    hostname to `ALLOWED_HOSTS` and as a Spotify redirect URI, then run
    `docker compose --profile tunnel up -d`.
-3. **Last.fm (optional).** Create a free app at https://www.last.fm/api/account/create and put its
-   key and shared secret in `LASTFM_API_KEY` and `LASTFM_SHARED_SECRET`. That turns on Discover
+3. **Last.fm (optional).** Create a free app at https://www.last.fm/api/account/create and paste its
+   API key and shared secret into *Settings > Last.fm* as an admin (or put them in `LASTFM_API_KEY`
+   and `LASTFM_SHARED_SECRET`, which take priority). That turns on Discover
    (new artists, albums and songs), similar songs/artists and better genres, and lets each person
    *Sign in with Last.fm* in Settings so Discover works from their Last.fm top artists and songs.
    Features hide when a key is missing.
@@ -69,4 +70,5 @@ npm test
 npm run check
 ```
 
-Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default).
+Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default). Secrets pasted into Settings
+are encrypted with `$DATA_DIR/secret.key`; back it up with the database, or they have to be entered again.

@@ -180,26 +180,48 @@
 {#snippet lastfmSection()}
 {#if data.u.lastfmUser}
 	<p>
-		<span class="ok">Connected</span> as
+		<span class="ok">Linked</span> as
 		<a href="https://www.last.fm/user/{encodeURIComponent(data.u.lastfmUser)}" target="_blank" rel="noopener">{data.u.lastfmUser}</a>.
 		<a href="/discover">Discover</a> picks new music from your Last.fm top artists and songs of the last month.
 	</p>
-	<form method="POST" action="?section=lastfm&/lastfmUnlink" use:enhance><button class="secondary">Unlink Last.fm</button></form>
+	<div class="row">
+		{#if data.lastfmLogin}<a class="button" href="/auth/lastfm">Reconnect Last.fm</a>{/if}
+		<form method="POST" action="?section=lastfm&/lastfmUnlink" use:enhance><button class="secondary">Unlink Last.fm</button></form>
+	</div>
 	<p class="muted small">Unlinking makes Discover go back to what you've played here.</p>
 {:else if data.lastfmLogin}
 	<p>Sign in with Last.fm so <a href="/discover">Discover</a> picks new music from everything you scrobble, not just what you've played here.</p>
 	<a class="button" href="/auth/lastfm">Sign in with Last.fm</a>
-{:else}
-	<p class="muted">
-		Last.fm sign-in isn't set up on this server yet.
-		{#if data.u.isAdmin}
-			Create a free app at <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a> and add its
-			<code>LASTFM_API_KEY</code> and <code>LASTFM_SHARED_SECRET</code> to the server's <code>.env</code>.
-		{:else}
-			Ask the admin to set it up.
-		{/if}
-	</p>
+{:else if !data.admin}
+	<p class="muted">Last.fm sign-in isn't turned on for this server yet. Ask the admin to turn it on.</p>
+{:else if data.admin.lastfmFromEnv}
+	<p class="muted">This server's Last.fm key is set in its <code>.env</code> file. Add <code>LASTFM_SHARED_SECRET</code> from the same Last.fm app there to turn on sign-in.</p>
 {/if}
+{#if data.admin && !data.admin.lastfmFromEnv}
+	{#if data.lastfmLogin}
+		<details>
+			<summary class="muted small">Change this server's Last.fm app</summary>
+			{@render lastfmAppForm()}
+		</details>
+	{:else}
+		<p>
+			Turn on Last.fm sign-in for everyone on this server. Create a free app at
+			<a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a> (any name; leave the callback URL empty), then paste
+			its API key and shared secret here.
+		</p>
+		{@render lastfmAppForm()}
+	{/if}
+{/if}
+{#if msg('lastfm')?.error}<p class="error">{msg('lastfm')?.error}</p>{/if}
+{/snippet}
+
+{#snippet lastfmAppForm()}
+<form method="POST" action="?section=lastfm&/lastfmApp" use:enhance class="stack">
+	<label>API key <input name="api_key" value={data.admin?.lastfmKey} autocomplete="off" required /></label>
+	<label>Shared secret <input name="shared_secret" type="password" placeholder={data.admin?.lastfmKey ? 'Saved' : ''} autocomplete="off" required /></label>
+	<button>Save and turn on</button>
+	<p class="muted small">The secret is stored encrypted.</p>
+</form>
 {/snippet}
 
 {#snippet accountSection()}
