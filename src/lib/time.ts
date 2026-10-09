@@ -29,11 +29,17 @@ export function offsetAt(tz: string, ts: number) {
 /** Returns fn(ts) -> Date whose UTC getters read as local wall-clock time in `tz`. */
 export function localizer(tz: string) {
 	const cache = new Map<number, number>();
+	const off = (h: number) => {
+		let o = cache.get(h);
+		if (o === undefined) cache.set(h, (o = offsetAt(tz, h * 3600)));
+		return o;
+	};
 	return (ts: number) => {
 		const h = Math.floor(ts / 3600);
-		let off = cache.get(h);
-		if (off === undefined) cache.set(h, (off = offsetAt(tz, h * 3600)));
-		return new Date((ts + off) * 1000);
+		// Same offset at both ends of the UTC day means no DST change inside it: one lookup covers 24 hours.
+		const day = h - (((h % 24) + 24) % 24);
+		const o = off(day) === off(day + 24) ? off(day) : off(h);
+		return new Date((ts + o) * 1000);
 	};
 }
 

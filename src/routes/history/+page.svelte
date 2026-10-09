@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Cover from '#lib/components/Cover.svelte';
 	import RangePicker from '#lib/components/RangePicker.svelte';
@@ -16,6 +17,70 @@
 	);
 	// Keep the current filters when posting, so the list reloads as it was.
 	const deleteAction = $derived(page.url.search ? `${page.url.search}&/delete` : '?/delete');
+
+	// Search-as-you-type: picking a suggestion filters the list to that song, artist or album.
+	type Hit = { id: number; name: string; sub: string | null; image: string | null; plays: number };
+	const GROUPS = [
+		['tracks', 'track', 'Songs'],
+		['artists', 'artist', 'Artists'],
+		['albums', 'album', 'Albums']
+	] as const;
+	let query = $derived(data.search);
+	let results = $state<Record<'tracks' | 'artists' | 'albums', Hit[]> | null>(null);
+	let open = $state(false);
+	let active = $state(-1);
+	let timer: ReturnType<typeof setTimeout>;
+	let seq = 0;
+	const hits = $derived(
+		results
+			? GROUPS.flatMap(([key, kind, heading]) =>
+					results![key].map((h, i) => ({
+						...h,
+						kind,
+						heading: i === 0 ? heading : null,
+						href: withParams({ track: null, album: null, artist: null, month: null, q: null, before: null, date: null, [kind]: String(h.id) })
+					}))
+				)
+			: []
+	);
+
+	function suggest() {
+		clearTimeout(timer);
+		const q = query.trim();
+		const mine = ++seq;
+		if (!q) return (results = null);
+		timer = setTimeout(async () => {
+			const params = new URLSearchParams({ q });
+			for (const k of ['user', 'range']) if (page.url.searchParams.get(k)) params.set(k, page.url.searchParams.get(k)!);
+			const res = await fetch(`/api/search?${params}`).catch(() => null);
+			const body = res?.ok ? await res.json() : null;
+			if (mine !== seq) return; // a newer keystroke already asked again
+			results = body;
+			active = -1;
+			open = true;
+		}, 120);
+	}
+
+	function pick() {
+		open = false;
+		query = '';
+		results = null;
+	}
+
+	function keys(e: KeyboardEvent) {
+		if (e.key === 'Escape') open = false;
+		if (!open || !hits.length) return;
+		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+			e.preventDefault();
+			if (e.key === 'ArrowDown') active = (active + 1) % hits.length;
+			else active = active <= 0 ? hits.length - 1 : active - 1;
+			document.getElementById(`hit-${active}`)?.scrollIntoView({ block: 'nearest' });
+		} else if (e.key === 'Enter' && active >= 0) {
+			e.preventDefault();
+			goto(hits[active].href);
+			pick();
+		}
+	}
 </script>
 
 <div class="head">
@@ -31,7 +96,45 @@
 
 <form class="tools" method="GET">
 	{#each hidden as [k, v] (k)}<input type="hidden" name={k} value={v} />{/each}
-	<label class="grow">Search songs, artists and albums <input name="q" type="search" value={data.search} /></label>
+	<div class="grow combo">
+		<label for="q">Search songs, artists and albums</label>
+		<input
+			id="q"
+			name="q"
+			type="search"
+			autocomplete="off"
+			role="combobox"
+			aria-autocomplete="list"
+			aria-controls="suggestions"
+			aria-expanded={open && !!results}
+			aria-activedescendant={active >= 0 ? `hit-${active}` : undefined}
+			bind:value={query}
+			oninput={suggest}
+			onkeydown={keys}
+			onfocus={() => (open = true)}
+			onblur={() => (open = false)}
+		/>
+		{#if open && results}
+			<!-- mousedown would blur the input and close the list before the click lands -->
+			<ul id="suggestions" role="listbox" aria-label="Suggestions" onmousedown={(e) => e.preventDefault()}>
+				{#each hits as h, i (h.kind + h.id)}
+					{#if h.heading}<li class="heading" role="presentation">{h.heading}</li>{/if}
+					<li id="hit-{i}" role="option" aria-selected={i === active}>
+						<a href={h.href} tabindex="-1" onclick={pick} onmouseenter={() => (active = i)}>
+							<Cover src={h.image} alt={h.name} size={32} round={h.kind === 'artist'} />
+							<span class="what">
+								<span>{h.name}</span>
+								{#if h.sub}<small>{h.sub}</small>{/if}
+							</span>
+							<small>{fmt(h.plays)} plays</small>
+						</a>
+					</li>
+				{:else}
+					<li class="heading" role="presentation">Nothing played matches “{query.trim()}”</li>
+				{/each}
+			</ul>
+		{/if}
+	</div>
 	<label>Jump to date <input name="date" type="date" /></label>
 	<button>Go</button>
 </form>
@@ -100,6 +203,45 @@
 	.grow {
 		flex: 1;
 		min-width: 220px;
+	}
+	.combo {
+		position: relative;
+		display: grid;
+		gap: 4px;
+		font-size: 0.9rem;
+	}
+	[role='listbox'] {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		z-index: 4;
+		margin: 4px 0 0;
+		padding: 6px;
+		list-style: none;
+		background: var(--surface-3);
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		max-height: 420px;
+		overflow-y: auto;
+	}
+	.heading {
+		font-size: 0.75rem;
+		color: var(--muted);
+		padding: 8px 8px 4px;
+	}
+	[role='option'] a {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		gap: 10px;
+		align-items: center;
+		padding: 5px 8px;
+		border-radius: 6px;
+		color: var(--ink);
+		text-decoration: none;
+	}
+	[role='option'][aria-selected='true'] a {
+		background: var(--surface-2);
 	}
 	.plays {
 		list-style: none;
