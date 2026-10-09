@@ -1,4 +1,4 @@
-import { get, all, run, now, type Row } from './db.js';
+import { get, all, run, now, unseal, type Row } from './db.js';
 import { upsertArtist, upsertAlbum, upsertTrack, insertPlay, key } from './ingest.js';
 
 export const SCOPES = 'user-read-recently-played user-read-currently-playing';
@@ -13,7 +13,8 @@ export const serverAppConfigured = () => !!serverApp();
 
 /** The Spotify app a user links through: their own if they set one up, otherwise the server's. */
 export function appFor(user: Row | null, ownWanted = true) {
-	if (ownWanted && user?.own_client_id && user?.own_client_secret) return { id: user.own_client_id as string, secret: user.own_client_secret as string, own: true };
+	const ownSecret = ownWanted && user?.own_client_id && unseal(user.own_client_secret);
+	if (ownSecret) return { id: user.own_client_id as string, secret: ownSecret, own: true };
 	const s = serverApp();
 	return s ? { ...s, own: false } : null;
 }
