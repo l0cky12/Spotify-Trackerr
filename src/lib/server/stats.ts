@@ -15,19 +15,20 @@ const IMG = {
 };
 
 export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '') {
-	const where = `${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? ${filter}`;
+	// Rank on plays alone, then join names and images for just the page of winners: joining every play first is several times slower.
+	const col = { track: 'track_id', album: 'album_id', artist: 'artist_id' }[kind];
+	const ranked = `SELECT p.${col} id, COUNT(*) plays, SUM(p.ms_played) ms FROM plays p
+		WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? AND p.${col} IS NOT NULL ${filter}
+		GROUP BY p.${col} ORDER BY ${order(s.rankBy)} LIMIT ? OFFSET ?`;
 	const sql = {
-		track: `SELECT t.id, t.name, a.name artist, a.id artist_id, ${IMG.track} image, COUNT(*) plays, SUM(p.ms_played) ms
-			FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id LEFT JOIN albums al ON al.id = t.album_id
-			WHERE ${where} GROUP BY t.id`,
-		album: `SELECT al.id, al.name, a.name artist, a.id artist_id, ${IMG.album} image, COUNT(*) plays, SUM(p.ms_played) ms
-			FROM plays p JOIN albums al ON al.id = p.album_id JOIN artists a ON a.id = al.artist_id
-			WHERE ${where} GROUP BY al.id`,
-		artist: `SELECT a.id, a.name, NULL artist, NULL artist_id, ${IMG.artist} image, COUNT(*) plays, SUM(p.ms_played) ms
-			FROM plays p JOIN artists a ON a.id = p.artist_id
-			WHERE ${where} GROUP BY a.id`
+		track: `SELECT t.id, t.name, a.name artist, a.id artist_id, ${IMG.track} image, x.plays, x.ms
+			FROM (${ranked}) x JOIN tracks t ON t.id = x.id JOIN artists a ON a.id = t.artist_id LEFT JOIN albums al ON al.id = t.album_id`,
+		album: `SELECT al.id, al.name, a.name artist, a.id artist_id, ${IMG.album} image, x.plays, x.ms
+			FROM (${ranked}) x JOIN albums al ON al.id = x.id JOIN artists a ON a.id = al.artist_id`,
+		artist: `SELECT a.id, a.name, NULL artist, NULL artist_id, ${IMG.artist} image, x.plays, x.ms
+			FROM (${ranked}) x JOIN artists a ON a.id = x.id`
 	}[kind];
-	return all(`${sql} ORDER BY ${order(s.rankBy)} LIMIT ? OFFSET ?`, s.since, s.until, limit, offset);
+	return all(`${sql} ORDER BY ${order(s.rankBy)}`, s.since, s.until, limit, offset);
 }
 
 export function countDistinct(kind: Kind, s: Scope) {
@@ -50,8 +51,9 @@ export function firstPlay(ids: number[]) {
 
 export function genres(s: Scope, limit = 12) {
 	const rows = all(
-		`SELECT g.genre name, COUNT(*) plays, SUM(p.ms_played) ms FROM plays p JOIN artist_genres g ON g.artist_id = p.artist_id
-		 WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? GROUP BY g.genre ORDER BY ${order(s.rankBy)} LIMIT ?`,
+		`SELECT g.genre name, SUM(x.plays) plays, SUM(x.ms) ms
+		 FROM (SELECT p.artist_id, COUNT(*) plays, SUM(p.ms_played) ms FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? GROUP BY p.artist_id) x
+		 JOIN artist_genres g ON g.artist_id = x.artist_id GROUP BY g.genre ORDER BY ${order(s.rankBy)} LIMIT ?`,
 		s.since,
 		s.until,
 		limit
@@ -142,10 +144,12 @@ function keysBetween(since: number, until: number, key: (ts: number) => string) 
  * plays over time (with the previous period alongside), hour x weekday grid, top-artist trends.
  */
 export function timeSeries(s: Scope, trendArtists: { id: number; name: string }[]) {
-	const span = s.until - s.since;
+	// All time starts at the epoch; walking every hour since 1970 is what made that range crawl.
+	const start = s.since || Math.min(firstPlay(s.ids) ?? s.until - 86400, s.until - 86400);
+	const span = s.until - start;
 	const unit = unitFor(span);
 	const key = bucketer(s.tz, unit);
-	const keys = keysBetween(s.since, s.until, key);
+	const keys = keysBetween(start, s.until, key);
 	const index = new Map(keys.map((k, i) => [k, i]));
 	const cur = new Array(keys.length).fill(0);
 	const prev = new Array(keys.length).fill(0);
