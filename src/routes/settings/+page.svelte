@@ -14,6 +14,7 @@
 	const sections = $derived([
 		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || !!data.u.syncError, body: spotifySection },
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
+		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
 		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
@@ -199,6 +200,31 @@
 			Ask the admin to set it up.
 		{/if}
 	</p>
+{/if}
+{/snippet}
+
+{#snippet listenbrainzSection()}
+{#if data.u.listenbrainzUser}
+	<p>
+		<span class="ok">Connected</span> as
+		<a href="https://listenbrainz.org/user/{encodeURIComponent(data.u.listenbrainzUser)}/" target="_blank" rel="noopener">{data.u.listenbrainzUser}</a>.
+		{#if data.u.lastfmUser}<a href="/discover">Discover</a> uses Last.fm first, and ListenBrainz when Last.fm has nothing for the last month.{:else}<a href="/discover">Discover</a> picks new music from your ListenBrainz top artists and songs of the last month.{/if}
+	</p>
+	<form method="POST" action="?section=listenbrainz&/listenbrainzUnlink" use:enhance><button class="secondary">Unlink ListenBrainz</button></form>
+{:else if data.listenbrainzLogin}
+	<p>Sign in with ListenBrainz (your MusicBrainz account) so <a href="/discover">Discover</a> picks new music from everything you listen to, not just what you've played here.</p>
+	<a class="button" href="/auth/listenbrainz">Sign in with ListenBrainz</a>
+{:else}
+	<p class="muted">
+		ListenBrainz sign-in isn't set up on this server yet.
+		{#if data.u.isAdmin}
+			Register an app at <a href="https://musicbrainz.org/account/applications/register" target="_blank" rel="noopener">musicbrainz.org/account/applications</a>
+			(type: web application) with this callback URL, then add its <code>MUSICBRAINZ_CLIENT_ID</code> and <code>MUSICBRAINZ_CLIENT_SECRET</code> to the server's <code>.env</code>.
+		{:else}
+			Ask the admin to set it up.
+		{/if}
+	</p>
+	{#if data.u.isAdmin}<p><code>{data.listenbrainzCallback}</code></p>{/if}
 {/if}
 {/snippet}
 

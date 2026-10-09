@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { get, all, cached, run, now, tx, type Row } from './db.js';
 import { key } from './ingest.js';
-import { lastfm, realPicture, getJson, same } from './enrich.js';
+import { lastfm, realPicture, getJson, same, UA } from './enrich.js';
 
 const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
 
@@ -30,6 +30,44 @@ export function setLastfmUser(userId: number, username: string | null) {
 		run('UPDATE users SET lastfm_user = ? WHERE id = ?', username, userId);
 		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
 	});
+}
+
+/** ListenBrainz accounts are MusicBrainz accounts, so signing in goes through a MusicBrainz OAuth app. */
+export const listenbrainzLoginEnabled = () => !!process.env.MUSICBRAINZ_CLIENT_ID && !!process.env.MUSICBRAINZ_CLIENT_SECRET;
+
+export const listenbrainzAuthUrl = (redirect_uri: string, state: string) =>
+	'https://musicbrainz.org/oauth2/authorize?' +
+	new URLSearchParams({ response_type: 'code', client_id: process.env.MUSICBRAINZ_CLIENT_ID!, redirect_uri, scope: 'profile', state, access_type: 'online' });
+
+/** Trades the code from MusicBrainz's sign-in redirect for the username, and checks it has a ListenBrainz account. */
+export async function listenbrainzUsername(code: string, redirect_uri: string) {
+	const mb = async (path: string, init: RequestInit) => {
+		const res = await fetch('https://musicbrainz.org/oauth2/' + path, { ...init, headers: { 'User-Agent': UA, ...init.headers }, signal: AbortSignal.timeout(10_000) });
+		if (!res.ok) throw new Error(`MusicBrainz returned ${res.status}`);
+		return res.json();
+	};
+	const t = await mb('token', {
+		method: 'POST',
+		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: process.env.MUSICBRAINZ_CLIENT_ID!, client_secret: process.env.MUSICBRAINZ_CLIENT_SECRET! })
+	});
+	const me = await mb('userinfo', { headers: { Authorization: `Bearer ${t.access_token}` } });
+	if (!validName(me.sub)) throw new Error('MusicBrainz returned an invalid username.');
+	// 404 here means the MusicBrainz account has never opened ListenBrainz.
+	await getJson(`https://api.listenbrainz.org/1/user/${encodeURIComponent(me.sub)}/listen-count`);
+	return me.sub as string;
+}
+
+export function setListenbrainzUser(userId: number, username: string | null) {
+	tx(() => {
+		run('UPDATE users SET listenbrainz_user = ? WHERE id = ?', username, userId);
+		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
+	});
+}
+
+/** ListenBrainz stats for the last month; empty when it hasn't computed them yet (204). */
+async function listenbrainzTop(user: string, kind: 'artists' | 'recordings') {
+	const r = await getJson(`https://api.listenbrainz.org/1/stats/user/${encodeURIComponent(user)}/${kind}?` + new URLSearchParams({ range: 'month', count: '5' })).catch(() => null);
+	return Array.isArray(r?.payload?.[kind]) ? (r.payload[kind] as any[]) : [];
 }
 
 export type Rec = {
@@ -158,7 +196,7 @@ function topLocal(sql: string, userId: number) {
 /**
  * Artists, albums and songs the user hasn't played, from Last.fm's similar artists and songs.
  * Seeds are their Last.fm top artists and songs of the last month when they've signed in to Last.fm,
- * otherwise what they played most here.
+ * else their ListenBrainz ones when they've signed in there, otherwise what they played most here.
  */
 export async function buildDiscover(user: Row) {
 	let seedArtists: string[] = [];
@@ -171,6 +209,11 @@ export async function buildDiscover(user: Row) {
 		]);
 		seedArtists = (Array.isArray(a?.topartists?.artist) ? a.topartists.artist : []).filter((x: any) => validName(x?.name)).map((x: any) => x.name);
 		seedSongs = (Array.isArray(t?.toptracks?.track) ? t.toptracks.track : []).filter((x: any) => validName(x?.name) && validName(x?.artist?.name)).map((x: any) => ({ artist: x.artist.name, title: x.name }));
+	}
+	if (!seedArtists.length && user.listenbrainz_user) {
+		const [a, t] = await Promise.all([listenbrainzTop(user.listenbrainz_user, 'artists'), listenbrainzTop(user.listenbrainz_user, 'recordings')]);
+		seedArtists = a.filter((x) => validName(x?.artist_name)).map((x) => x.artist_name);
+		if (!seedSongs.length) seedSongs = t.filter((x) => validName(x?.recording_name) && validName(x?.artist_credit_name)).map((x) => ({ artist: x.artist_credit_name, title: x.recording_name }));
 	}
 	if (!seedArtists.length)
 		seedArtists = topLocal(
@@ -209,15 +252,25 @@ export async function buildDiscover(user: Row) {
 	const newAlbums = await unheard(albums, user.lastfm_user ?? null);
 	for (const r of [...artists, ...newAlbums, ...songs]) if (!r.image) r.image = await deezerImage(r);
 
-	const value = { seeds: seedArtists, lastfmUser: user.lastfm_user ?? null, fromLastfm: !!user.lastfm_user, artists, albums: newAlbums, songs, at: now() };
+	const value = {
+		seeds: seedArtists,
+		lastfmUser: user.lastfm_user ?? null,
+		listenbrainzUser: user.listenbrainz_user ?? null,
+		fromLastfm: !!user.lastfm_user,
+		artists,
+		albums: newAlbums,
+		songs,
+		at: now()
+	};
 	if (!artists.length && !songs.length) return value;
 	run(
-		'INSERT INTO cache (key, value, fetched_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND lastfm_user IS ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
+		'INSERT INTO cache (key, value, fetched_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND lastfm_user IS ? AND listenbrainz_user IS ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
 		`discover:${user.id}`,
 		JSON.stringify(value),
 		value.at,
 		user.id,
-		value.lastfmUser
+		value.lastfmUser,
+		value.listenbrainzUser
 	);
 	return value;
 }
@@ -226,7 +279,8 @@ export function savedDiscover(userId: number) {
 	const r = get('SELECT value FROM cache WHERE key = ?', `discover:${userId}`);
 	const v = r ? (JSON.parse(r.value) as Awaited<ReturnType<typeof buildDiscover>>) : null;
 	// Picks saved before Discover had shelves were a single song list.
-	return v?.artists && v.lastfmUser === (get('SELECT lastfm_user FROM users WHERE id = ?', userId)?.lastfm_user ?? null) ? v : null;
+	const u = get('SELECT lastfm_user, listenbrainz_user FROM users WHERE id = ?', userId);
+	return v?.artists && v.lastfmUser === (u?.lastfm_user ?? null) && (v.listenbrainzUser ?? null) === (u?.listenbrainz_user ?? null) ? v : null;
 }
 
 export const spotifySearchUrl = (r: Rec) =>

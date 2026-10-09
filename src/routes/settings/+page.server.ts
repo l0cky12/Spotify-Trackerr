@@ -4,7 +4,7 @@ import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
 import { LINK_LIFETIME, serverAppConfigured, unlink } from '#lib/server/spotify.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
-import { lastfmLoginEnabled, setLastfmUser } from '#lib/server/recs.js';
+import { lastfmLoginEnabled, listenbrainzLoginEnabled, setLastfmUser, setListenbrainzUser } from '#lib/server/recs.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -23,10 +23,13 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			ownClientId: u.own_client_id as string | null,
 			usesOwnApp: !!u.spotify_own_app,
 			lastfmUser: u.lastfm_user as string | null,
+			listenbrainzUser: u.listenbrainz_user as string | null,
 			isAdmin: !!u.is_admin
 		},
 		serverApp: serverAppConfigured(),
 		lastfmLogin: lastfmLoginEnabled(),
+		listenbrainzLogin: listenbrainzLoginEnabled(),
+		listenbrainzCallback: `${url.origin}/auth/listenbrainz/callback`,
 		callback: `${url.origin}/auth/spotify/callback`,
 		imports: all('SELECT * FROM imports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', u.id),
 		pending: get('SELECT COUNT(*) n FROM tracks WHERE enriched != 1')!.n as number,
@@ -89,6 +92,10 @@ export const actions = {
 	lastfmUnlink: async ({ locals }) => {
 		setLastfmUser(locals.user!.id, null);
 		return { section: 'lastfm', saved: true };
+	},
+	listenbrainzUnlink: async ({ locals }) => {
+		setListenbrainzUser(locals.user!.id, null);
+		return { section: 'listenbrainz', saved: true };
 	},
 	import: async ({ request, locals }) => {
 		const files = (await request.formData()).getAll('files').filter((f): f is File => f instanceof File && f.size > 0);
