@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { all, get, run, setting, setSetting } from '#lib/server/db.js';
+import { all, get, run, seal, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
 import { LINK_LIFETIME, serverAppConfigured, unlink } from '#lib/server/spotify.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
@@ -82,8 +82,7 @@ export const actions = {
 			return { section: 'ownApp', saved: true };
 		}
 		if (!/^[a-f0-9]{32}$/i.test(id) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'ownApp', error: 'Client ID and secret are both 32-character codes from the Spotify dashboard.' });
-		// ponytail: secret stored in plain text in the server's database; encrypt at rest if the DB ever leaves this box.
-		run('UPDATE users SET own_client_id = ?, own_client_secret = ? WHERE id = ?', id, secret, locals.user!.id);
+		run('UPDATE users SET own_client_id = ?, own_client_secret = ? WHERE id = ?', id, seal(secret), locals.user!.id);
 		return { section: 'ownApp', saved: true };
 	},
 	lastfmUnlink: async ({ locals }) => {

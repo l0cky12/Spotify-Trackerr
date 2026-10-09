@@ -69,4 +69,5 @@ npm test
 npm run check
 ```
 
-Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default).
+Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default). Secrets pasted into Settings
+are encrypted with `$DATA_DIR/secret.key`; back it up with the database, or they have to be entered again.
