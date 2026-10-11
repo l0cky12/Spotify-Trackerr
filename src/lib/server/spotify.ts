@@ -4,17 +4,23 @@ import { upsertArtist, upsertAlbum, upsertTrack, insertPlay, key } from './inges
 
 const pausedUntil = new Map<string, number>();
 
-/** One Web API call through `appId`. A 429 pauses every call through that app (sync, now playing, genres) until Spotify says. */
+/**
+ * One Web API call through `appId`. A 429, from the API or from the token refresh before it, pauses every call
+ * through that app (sync, now playing, genres) until Spotify says.
+ */
 async function call(appId: string, path: string, token: () => Promise<string | null>) {
 	if (Date.now() < (pausedUntil.get(appId) ?? 0)) throw new SpotifyError(429, 'Spotify asked us to slow down.');
-	const t = await token();
-	if (!t) return null;
-	const res = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${t}` }, signal: AbortSignal.timeout(10_000) });
-	if (res.status === 204) return null;
-	if (res.ok) return res.json();
-	const e = new SpotifyError(res.status, `Spotify ${path} returned ${res.status}`, Number(res.headers.get('retry-after') ?? 0));
-	if (e.kind === 'rateLimited') pausedUntil.set(appId, Date.now() + Math.max(e.retryAfter, 60) * 1000);
-	throw e;
+	try {
+		const t = await token();
+		if (!t) return null;
+		const res = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${t}` }, signal: AbortSignal.timeout(10_000) });
+		if (res.status === 204) return null;
+		if (res.ok) return res.json();
+		throw new SpotifyError(res.status, `Spotify ${path} returned ${res.status}`, Number(res.headers.get('retry-after') ?? 0));
+	} catch (e) {
+		if (e instanceof SpotifyError && e.kind === 'rateLimited') pausedUntil.set(appId, Date.now() + Math.max(e.retryAfter, 60) * 1000);
+		throw e;
+	}
 }
 
 /** Calls the Web API as `user`. */

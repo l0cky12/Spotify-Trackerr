@@ -60,3 +60,15 @@ test('other Spotify failures are recorded per person and the rest still sync', a
 	expect(c.connectionStatus(db.get('SELECT * FROM users WHERE id = 1')).lastError).toMatch(/returned 500/);
 	expect(c.connectionStatus(db.get('SELECT * FROM users WHERE id = 2')).lastError).toBeNull();
 });
+
+test('a rate limit on the token refresh pauses that app too', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(Date.now() + 6 * 3600_000); // past earlier pauses
+	db.run('UPDATE users SET spotify_expires = 0, sync_error = NULL'); // both need a refresh, both on the server app
+	const calls = fakeSpotify(() => new Response('', { status: 429, headers: { 'retry-after': '120' } }));
+	await syncAll();
+	await syncAll();
+	vi.useRealTimers();
+	expect(calls).toHaveLength(1); // one refresh hit the limit; nothing else went out through that app
+	expect(db.all('SELECT sync_error FROM users').map((u) => u.sync_error)).toEqual([null, null]);
+});
