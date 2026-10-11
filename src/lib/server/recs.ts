@@ -1,36 +1,9 @@
-import { createHash } from 'node:crypto';
-import { get, all, cached, run, now, tx, type Row } from './db.js';
+import { get, all, cached, run, now, type Row } from './db.js';
+import { lastfmApp } from './connections.js';
 import { key } from './ingest.js';
 import { lastfm, realPicture, getJson, same } from './enrich.js';
 
 const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
-
-export const lastfmEnabled = () => !!process.env.LASTFM_API_KEY;
-/** Signing in with Last.fm also needs the shared secret from the same Last.fm app page. */
-export const lastfmLoginEnabled = () => lastfmEnabled() && !!process.env.LASTFM_SHARED_SECRET;
-
-/** Last.fm's api_sig: md5 of every param as name+value, sorted by name, then the shared secret. */
-export const lastfmSig = (params: Record<string, string>, secret: string) =>
-	createHash('md5')
-		.update(Object.keys(params).sort().map((k) => k + params[k]).join('') + secret)
-		.digest('hex');
-
-export const lastfmAuthUrl = (cb: string) => 'https://www.last.fm/api/auth/?' + new URLSearchParams({ api_key: process.env.LASTFM_API_KEY!, cb });
-
-/** Trades the token from Last.fm's sign-in redirect for the Last.fm username it belongs to. */
-export async function lastfmUsername(token: string) {
-	const p = { method: 'auth.getSession', api_key: process.env.LASTFM_API_KEY!, token };
-	const r = await lastfm({ ...p, api_sig: lastfmSig(p, process.env.LASTFM_SHARED_SECRET!) });
-	if (!validName(r.session?.name)) throw new Error('Last.fm returned an invalid username.');
-	return r.session.name as string;
-}
-
-export function setLastfmUser(userId: number, username: string | null) {
-	tx(() => {
-		run('UPDATE users SET lastfm_user = ? WHERE id = ?', username, userId);
-		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
-	});
-}
 
 export type Rec = {
 	artist: string;
@@ -67,7 +40,7 @@ function localize(r: Rec): Rec {
 const WEEK = 7 * 86400;
 
 export async function similarTracks(artist: string, title: string): Promise<Rec[]> {
-	if (!lastfmEnabled()) return [];
+	if (!lastfmApp()) return [];
 	const list = await cached(`lfm:track:${key(artist)}:${key(title)}`, WEEK, async () => {
 		const r = await lastfm({ method: 'track.getsimilar', artist, track: title, autocorrect: '1', limit: '15' });
 		return (r.similartracks?.track ?? []).filter((t: any) => Number(t.match) >= 0.05).map((t: any) => ({ title: t.name, artist: t.artist?.name }));
@@ -76,7 +49,7 @@ export async function similarTracks(artist: string, title: string): Promise<Rec[
 }
 
 export async function similarArtists(artist: string): Promise<Rec[]> {
-	if (!lastfmEnabled()) return [];
+	if (!lastfmApp()) return [];
 	const list = await cached(`lfm:artist:${key(artist)}`, WEEK, async () => {
 		const r = await lastfm({ method: 'artist.getsimilar', artist, autocorrect: '1', limit: '12' });
 		return (r.similarartists?.artist ?? []).map((a: any) => ({ artist: a.name }));

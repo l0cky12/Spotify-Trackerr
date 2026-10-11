@@ -13,7 +13,7 @@ new DatabaseSync(join(dir, 'trackerr.db')).exec('CREATE TABLE users (id INTEGER 
 process.env.DATA_DIR = dir;
 
 test('Last.fm signatures sort params by name and end with the secret', async () => {
-	const { lastfmSig } = await import('./recs.js');
+	const { lastfmSig } = await import('./connections.js');
 	expect(lastfmSig({ token: 't', method: 'auth.getSession', api_key: 'k' }, 'shh')).toBe(md5('api_keykmethodauth.getSessiontokentshh'));
 });
 

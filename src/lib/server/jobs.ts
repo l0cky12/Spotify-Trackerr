@@ -1,5 +1,6 @@
 import { run, setting, setSetting } from './db.js';
 import { syncAll } from './spotify.js';
+import { lastfmApp } from './connections.js';
 import { deezerStep, itunesStep, genreStep } from './enrich.js';
 
 /** A loop that runs `step` every `ms`, never overlapping itself, and logs instead of crashing. */
@@ -24,7 +25,7 @@ export function startJobs() {
 	g.__trackerrJobs = true;
 
 	// If a Last.fm key was added after artists were processed, retry the ones that ended up without genres.
-	if (process.env.LASTFM_API_KEY && setting('lastfm_seen') !== '1') {
+	if (lastfmApp() && setting('lastfm_seen') !== '1') {
 		run('UPDATE artists SET genres_done = 0 WHERE NOT EXISTS (SELECT 1 FROM artist_genres g WHERE g.artist_id = artists.id)');
 		setSetting('lastfm_seen', '1');
 	}

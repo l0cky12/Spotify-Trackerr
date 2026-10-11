@@ -1,6 +1,7 @@
 import { get, run } from './db.js';
 import { key } from './ingest.js';
-import { appApi, SpotifyError } from './spotify.js';
+import { appApi } from './spotify.js';
+import { lastfmApp, SpotifyError } from './connections.js';
 
 const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
 const queues = new Map<string, { pending: Promise<void>; next: number }>();
@@ -154,7 +155,7 @@ export async function genreStep() {
 			if (e instanceof SpotifyError && e.status === 429) spotifyGenresPausedUntil = Date.now() + 3600_000;
 		}
 	}
-	if (!genres.length && process.env.LASTFM_API_KEY) {
+	if (!genres.length && lastfmApp()) {
 		const r = await lastfm({ method: 'artist.gettoptags', artist: a.name, autocorrect: '1' }).catch(() => null);
 		if (!r) return false; // network trouble: retry later
 		genres = (r.toptags?.tag ?? [])
@@ -169,7 +170,7 @@ export async function genreStep() {
 }
 
 export async function lastfm(params: Record<string, string>) {
-	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ ...params, api_key: process.env.LASTFM_API_KEY ?? '', format: 'json' }));
+	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ ...params, api_key: lastfmApp()?.key ?? '', format: 'json' }));
 	if (r.error) throw Object.assign(new Error(r.message), { code: Number(r.error) });
 	return r;
 }

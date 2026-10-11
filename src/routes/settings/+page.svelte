@@ -12,7 +12,7 @@
 	// One section shows at a time, picked by ?section= so it renders on the server and works without JavaScript.
 	// Each form posts to ?section=<id>&/<action> so the same section reopens with its result.
 	const sections = $derived([
-		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || !!data.u.syncError, body: spotifySection },
+		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
@@ -49,17 +49,18 @@
 </div>
 
 {#snippet spotifySection()}
-{#if data.u.linked}
+{#if data.u.needsReconnect}
+	<p><span class="error">Sync stopped: this Spotify link can't be used any more.</span> Sign in again to keep syncing.</p>
+	<a class="button" href="/auth/spotify?mode=link">Reconnect Spotify</a>
+{:else if data.u.linked}
 	<p>
-		{#if data.u.syncError === 'reauth'}
-			<span class="error">Sync stopped: Spotify ended this app's access.</span>
-		{:else if data.u.syncError}
-			<span class="error">Last sync failed: {data.u.syncError}</span>
+		{#if data.u.lastError}
+			<span class="error">Last sync failed: {data.u.lastError}</span>
 		{:else}
 			<span class="ok">Linked.</span> New plays sync every 5 minutes{#if data.u.lastSync}; last checked {formatWhen(data.u.lastSync, data.u.timezone)}{/if}.
 		{/if}
 	</p>
-	{#if data.u.linkExpires}<p class="muted">Spotify ends this link on {formatDate(data.u.linkExpires, data.u.timezone)}, six months after you signed in. Reconnect any time to reset it.</p>{/if}
+	{#if data.u.expiresAt}<p class="muted">Spotify ends this link on {formatDate(data.u.expiresAt, data.u.timezone)}, six months after you signed in. Reconnect any time to reset it.</p>{/if}
 	<div class="row">
 		<a class="button" href="/auth/spotify?mode=link">Reconnect Spotify</a>
 		<form method="POST" action="?section=spotify&/unlink" use:enhance><button class="secondary">Unlink Spotify</button></form>
