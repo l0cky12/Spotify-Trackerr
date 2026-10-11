@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -15,6 +15,9 @@ old.exec(`INSERT INTO users VALUES
 	(1, 'plain', 0, 'sp1', 'plain-access', 'plain-refresh', 9999999999, 0, 1, NULL, NULL, 'own1', 'plain-secret'),
 	(2, 'own app lost', 0, 'sp2', 'a2', 'r2', 0, 0, 1, NULL, NULL, 'own2', '${lostKey}'),
 	(3, 'token lost', 0, 'sp3', '${lostKey}', '${lostKey}', 0, 0, 0, NULL, NULL, NULL, NULL)`);
+// Enough real-sized tokens that encrypting them (which makes them longer) moves rows and leaves the old copies in free pages.
+const filler = old.prepare('INSERT INTO users (id, display_name, created_at, spotify_access, spotify_refresh, spotify_expires) VALUES (?, ?, 0, ?, ?, 0)');
+for (let i = 1000; i < 1300; i++) filler.run(i, 'filler', 'plain-access' + 'x'.repeat(200), 'plain-refresh' + 'y'.repeat(120));
 old.close();
 process.env.DATA_DIR = dir;
 process.env.SPOTIFY_CLIENT_ID = 'server-id';
@@ -97,6 +100,8 @@ test('tokens and app secrets are encrypted at rest, including ones saved before 
 		for (const col of ['spotify_access', 'spotify_refresh', 'own_client_secret']) expect(u[col]).toMatch(/^enc:/);
 		expect(JSON.stringify(u)).not.toMatch(/plain-|"access"|"refresh"|bbbb/);
 	}
+	// Nor anywhere in the database files, e.g. in pages the old rows used to occupy.
+	for (const f of readdirSync(dir).filter((f) => f.startsWith('trackerr.db'))) expect(readFileSync(join(dir, f)).includes('plain-refresh')).toBe(false);
 	expect(await c.spotifyToken(user(1))).toBe('plain-access');
 	expire(1);
 	const apps = fakeSpotify();
@@ -115,6 +120,20 @@ test('a refresh token Spotify rejects needs a reconnect, and later sync errors k
 	expect(c.connectionStatus(user(50))).toMatchObject({ needsReconnect: true, lastError: null });
 	c.saveSpotifyLink(50, { spotifyId: 'sp50', tokens, own: false });
 	expect(c.connectionStatus(user(50)).needsReconnect).toBe(false);
+});
+
+test("a server app missing from the environment fails the refresh but keeps the link for when it's back", async () => {
+	newUser(60);
+	c.saveSpotifyLink(60, { spotifyId: 'sp60', tokens, own: false });
+	expire(60);
+	delete process.env.SPOTIFY_CLIENT_SECRET;
+	const apps = fakeSpotify();
+	const e = await c.spotifyToken(user(60)).catch((e) => e);
+	process.env.SPOTIFY_CLIENT_SECRET = 'server-secret';
+	expect(apps).toEqual([]);
+	expect(e.message).toMatch(/isn't configured/);
+	expect(c.connectionStatus(user(60))).toMatchObject({ linked: true, needsReconnect: false });
+	expect(await c.spotifyToken(user(60))).toBe('fresh');
 });
 
 test('connectionStatus', () => {
