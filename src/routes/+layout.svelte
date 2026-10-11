@@ -37,11 +37,11 @@
 			Viewing {data.viewing}'s listening. <a href={page.url.pathname}>Back to mine</a>
 		</div>
 	{/if}
-	{#if data.me.reauth}
-		<div class="banner warn">Spotify sync stopped because the link expired. <a href="/auth/spotify?mode=link">Reconnect Spotify</a></div>
-	{:else if data.me.spotifyLinked && data.me.expiringSoon && data.me.linkExpires}
+	{#if data.me.spotify.needsReconnect}
+		<div class="banner warn">Spotify sync stopped: this link can't be used any more. <a href="/auth/spotify?mode=link">Reconnect Spotify</a></div>
+	{:else if data.me.spotify.linked && data.me.spotify.expiringSoon && data.me.spotify.expiresAt}
 		<div class="banner warn">
-			Spotify ends this app's access on {formatDate(data.me.linkExpires, data.me.tz)}. <a href="/auth/spotify?mode=link">Reconnect Spotify</a> to keep syncing.
+			Spotify ends this app's access on {formatDate(data.me.spotify.expiresAt, data.me.tz)}. <a href="/auth/spotify?mode=link">Reconnect Spotify</a> to keep syncing.
 		</div>
 	{/if}
 {/if}

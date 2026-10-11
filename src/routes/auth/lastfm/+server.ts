@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { randomBytes } from 'node:crypto';
-import { lastfmAuthUrl, lastfmLoginEnabled } from '#lib/server/recs.js';
+import { lastfmAuthUrl, lastfmLoginEnabled } from '#lib/server/connections.js';
 
 // Starts "Sign in with Last.fm" from Settings. Last.fm sends the user back to the callback with ?token=.
 export function GET({ url, locals, cookies }) {

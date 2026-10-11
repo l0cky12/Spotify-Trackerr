@@ -2,7 +2,8 @@ import type { Actions, PageServerLoad } from './$types';
 import { all } from '#lib/server/db.js';
 import { entityPage, setImage } from '#lib/server/entity.js';
 import { top } from '#lib/server/stats.js';
-import { similarArtists, lastfmEnabled, spotifySearchUrl } from '#lib/server/recs.js';
+import { similarArtists, spotifySearchUrl } from '#lib/server/recs.js';
+import { lastfmApp } from '#lib/server/connections.js';
 
 export const load: PageServerLoad = (event) => {
 	const e = entityPage(event, 'artist');
@@ -14,7 +15,7 @@ export const load: PageServerLoad = (event) => {
 		genres: all('SELECT genre FROM artist_genres WHERE artist_id = ?', e.id).map((g) => g.genre as string),
 		tracks: top('track', scope, 15, 0, filter),
 		albums: top('album', scope, 12, 0, filter),
-		lastfm: lastfmEnabled(),
+		lastfm: !!lastfmApp(),
 		similar: similarArtists(e.row.name).then((l) => l.map((r) => ({ ...r, url: r.artistId ? '' : spotifySearchUrl(r) })))
 	};
 };
