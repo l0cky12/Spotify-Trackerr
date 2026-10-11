@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { db, DATA_DIR, userColumns, all, get, run, now, tx, type Row } from './db.js';
+import { db, DATA_DIR, userColumns, all, get, run, now, tx, setting, setSetting, type Row } from './db.js';
 import { lastfm } from './enrich.js';
 
 // A person's Connections: their Spotify link (tokens, which app it went through, sync state) and their Last.fm username,
@@ -41,14 +41,23 @@ function unseal(value: string | null | undefined) {
 }
 
 if (userColumns.includes('spotify_refresh') && userColumns.includes('own_client_secret')) {
-	// Secrets saved before encryption existed. VACUUM then rewrites the files so no old page still holds the plain text.
-	let plain = 0;
-	for (const col of ['own_client_secret', 'spotify_access', 'spotify_refresh'])
-		for (const u of all(`SELECT id, ${col} v FROM users WHERE ${col} NOT LIKE 'enc:%'`)) plain += Number(run(`UPDATE users SET ${col} = ? WHERE id = ?`, seal(u.v), u.id).changes);
-	if (plain) {
-		db.exec('VACUUM');
-		db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-	}
+	// Secrets saved before encryption existed. Old copies can linger in free pages, so the files then get rewritten;
+	// that's retried every start until it works, since a full disk or another reader can stop it.
+	tx(() => {
+		for (const col of ['own_client_secret', 'spotify_access', 'spotify_refresh'])
+			for (const u of all(`SELECT id, ${col} v FROM users WHERE ${col} NOT LIKE 'enc:%'`)) {
+				run(`UPDATE users SET ${col} = ? WHERE id = ?`, seal(u.v), u.id);
+				setSetting('scrub_pending', '1');
+			}
+	});
+	if (setting('scrub_pending'))
+		try {
+			db.exec('VACUUM');
+			if ((db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get() as { busy: number }).busy) throw new Error('another process has the database open');
+			run("DELETE FROM settings WHERE key = 'scrub_pending'");
+		} catch (e) {
+			console.warn(`connections: couldn't rewrite the database to remove old plain-text tokens (${(e as Error).message}); will retry on next start.`);
+		}
 	// Secrets the current key can't open (secret.key was lost or replaced): drop them so nothing falls back to another app.
 	let lost = 0;
 	for (const u of all('SELECT id, own_client_secret, spotify_refresh, spotify_own_app FROM users WHERE own_client_secret IS NOT NULL OR spotify_refresh IS NOT NULL')) {
