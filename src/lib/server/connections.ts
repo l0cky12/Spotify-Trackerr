@@ -102,15 +102,20 @@ export function setOwnApp(userId: number, app: { id: string; secret: string } | 
 
 // ---- Spotify sign-in and tokens ----
 
+/** rateLimited: wait and retry. needsReconnect: the link is dead until the person signs in again. */
 export class SpotifyError extends Error {
 	constructor(
 		public status: number,
 		message: string,
-		public retryAfter = 0
+		public retryAfter = 0,
+		public kind: 'rateLimited' | 'needsReconnect' | 'failed' = status === 429 ? 'rateLimited' : message === 'invalid_grant' ? 'needsReconnect' : 'failed'
 	) {
 		super(message);
 	}
 }
+
+/** Spotify rate-limits each app separately; this names the app `user`'s calls go through (the server app for null). */
+export const spotifyAppId = (user: Row | null): string => (user?.spotify_own_app ? user.own_client_id : process.env.SPOTIFY_CLIENT_ID) ?? '';
 
 type Tokens = { access_token: string; refresh_token?: string; expires_in: number };
 
@@ -121,10 +126,11 @@ async function tokenRequest(app: { id: string; secret: string }, body: Record<st
 			Authorization: 'Basic ' + Buffer.from(`${app.id}:${app.secret}`).toString('base64'),
 			'Content-Type': 'application/x-www-form-urlencoded'
 		},
-		body: new URLSearchParams(body)
+		body: new URLSearchParams(body),
+		signal: AbortSignal.timeout(10_000)
 	});
 	const json = await res.json().catch(() => ({}));
-	if (!res.ok) throw new SpotifyError(res.status, json.error ?? `token request failed (${res.status})`);
+	if (!res.ok) throw new SpotifyError(res.status, json.error ?? `token request failed (${res.status})`, Number(res.headers.get('retry-after') ?? 0));
 	return json as Tokens;
 }
 
@@ -145,7 +151,7 @@ export async function exchangeSpotifyCode(user: Row | null, own: boolean, code: 
 	const app = own ? ownApp(user) : serverApp();
 	if (!app) throw new SpotifyError(400, 'No Spotify app is set up.');
 	const tokens = await tokenRequest(app, { grant_type: 'authorization_code', code, redirect_uri: redirectUri });
-	const me = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+	const me = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${tokens.access_token}` }, signal: AbortSignal.timeout(10_000) });
 	if (me.status === 403)
 		throw new SpotifyError(403, "This Spotify account isn't on the app's allowed-users list. Ask the admin to add it in the Spotify developer dashboard, or set up your own Spotify app in Settings.");
 	if (!me.ok) throw new SpotifyError(me.status, `Spotify returned ${me.status} when reading your profile.`);
@@ -187,7 +193,7 @@ export async function spotifyToken(user: Row) {
 	const refresh = unseal(user.spotify_refresh);
 	if (!app || !refresh) {
 		needsReconnect(user.id);
-		throw new SpotifyError(401, 'invalid_grant');
+		throw new SpotifyError(401, "Saved Spotify credentials can't be used any more.", 0, 'needsReconnect');
 	}
 	try {
 		const t = await tokenRequest(app, { grant_type: 'refresh_token', refresh_token: refresh });
@@ -200,7 +206,7 @@ export async function spotifyToken(user: Row) {
 		);
 		return t.access_token;
 	} catch (e) {
-		if (e instanceof SpotifyError && e.message === 'invalid_grant') needsReconnect(user.id);
+		if (e instanceof SpotifyError && e.kind === 'needsReconnect') needsReconnect(user.id);
 		throw e;
 	}
 }

@@ -1,7 +1,7 @@
 import { get, run } from './db.js';
 import { key } from './ingest.js';
 import { appApi } from './spotify.js';
-import { lastfmApp, SpotifyError } from './connections.js';
+import { lastfmApp } from './connections.js';
 
 const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
 const queues = new Map<string, { pending: Promise<void>; next: number }>();
@@ -136,8 +136,6 @@ const JUNK_TAGS = new Set([
 	'female vocalists', 'male vocalist', 'female vocalist', 'american', 'british', 'usa', 'uk', 'canadian', 'australian'
 ]);
 
-let spotifyGenresPausedUntil = 0;
-
 /** Genres for the most-played artist that has none yet: Spotify first, then Last.fm tags. */
 export async function genreStep() {
 	const a = get(
@@ -147,13 +145,10 @@ export async function genreStep() {
 	);
 	if (!a) return false;
 	let genres: string[] = [];
-	if (a.spotify_id && Date.now() > spotifyGenresPausedUntil) {
-		try {
-			const r = await appApi(`/artists/${a.spotify_id}`);
-			genres = r?.genres ?? [];
-		} catch (e) {
-			if (e instanceof SpotifyError && e.status === 429) spotifyGenresPausedUntil = Date.now() + 3600_000;
-		}
+	if (a.spotify_id) {
+		// While Spotify is rate-limiting the server app this throws straight away and Last.fm tags are used instead.
+		const r = await appApi(`/artists/${a.spotify_id}`).catch(() => null);
+		genres = r?.genres ?? [];
 	}
 	if (!genres.length && lastfmApp()) {
 		const r = await lastfm({ method: 'artist.gettoptags', artist: a.name, autocorrect: '1' }).catch(() => null);

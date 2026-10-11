@@ -86,7 +86,7 @@ test("secrets the key can't open need a reconnect and never fall back to the ser
 	expire(30);
 	db.run('UPDATE users SET own_client_secret = ? WHERE id = 30', lostKey);
 	const apps = fakeSpotify();
-	await expect(c.spotifyToken(user(30))).rejects.toThrow('invalid_grant');
+	await expect(c.spotifyToken(user(30))).rejects.toMatchObject({ kind: 'needsReconnect' });
 	expect(apps).toEqual([]);
 	expect(c.connectionStatus(user(30)).needsReconnect).toBe(true);
 });
@@ -116,6 +116,7 @@ test('a refresh token Spotify rejects needs a reconnect, and later sync errors k
 	const apps = fakeSpotify(() => Response.json({ error: 'invalid_grant' }, { status: 400 }));
 	const e = await c.spotifyToken(user(50)).catch((e) => e);
 	expect(apps).toEqual(['server-id:server-secret']);
+	expect(e.kind).toBe('needsReconnect');
 	c.recordSync(50, e);
 	expect(c.connectionStatus(user(50))).toMatchObject({ needsReconnect: true, lastError: null });
 	c.saveSpotifyLink(50, { spotifyId: 'sp50', tokens, own: false });
