@@ -239,6 +239,12 @@ export function yearDays(s: Scope, year: number) {
 	return { days: Object.fromEntries(days), months };
 }
 
+/** Artists first played in the scope (none of these users played them before `since`), ranked like `top`. */
+export function newArtists(s: Scope, limit = 10) {
+	// The inner alias shadows the outer `p` so `users()` applies to the earlier plays.
+	return top('artist', s, limit, 0, `AND p.artist_id NOT IN (SELECT p.artist_id FROM plays p WHERE ${users(s.ids)} AND p.played_at < ${Math.trunc(s.since)} AND p.artist_id IS NOT NULL)`);
+}
+
 export function newArtistsIn(s: Scope) {
 	return get(
 		`SELECT COUNT(*) n FROM (SELECT p.artist_id, MIN(p.played_at) f FROM plays p WHERE ${users(s.ids)} GROUP BY p.artist_id) WHERE f >= ? AND f < ?`,
