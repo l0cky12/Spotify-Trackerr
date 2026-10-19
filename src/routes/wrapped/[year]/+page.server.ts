@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { viewOf } from '#lib/server/view.js';
-import { top, totals, genres, releaseYears, yearDays, newArtistsIn, firstPlay, type Scope } from '#lib/server/stats.js';
+import { top, totals, genres, releaseYears, yearDays, newArtistsIn, newArtists, firstPlay, type Scope } from '#lib/server/stats.js';
 import { fromLocal, localizer } from '#lib/time.js';
 
 export const load: PageServerLoad = (event) => {
@@ -22,7 +22,8 @@ export const load: PageServerLoad = (event) => {
 		year,
 		years,
 		totals: totals(scope),
-		newArtists: newArtistsIn(scope),
+		newArtistCount: newArtistsIn(scope),
+		newArtists: newArtists(scope, 10),
 		tracks: top('track', scope, 5),
 		albums: top('album', scope, 5),
 		artists: top('artist', scope, 5),

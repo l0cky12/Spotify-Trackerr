@@ -36,7 +36,7 @@
 		<div><dt>plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
 		<div><dt>artists</dt><dd>{fmt(data.totals.artists)}</dd></div>
 		<div><dt>songs</dt><dd>{fmt(data.totals.tracks)}</dd></div>
-		<div><dt>artists new to you</dt><dd>{fmt(data.newArtists)}</dd></div>
+		<div><dt>artists new to you</dt><dd>{fmt(data.newArtistCount)}</dd></div>
 	</dl>
 
 	<section class="tops">
@@ -57,6 +57,13 @@
 		<section class="panel"><h2>Top 5 albums</h2><BarList items={list(data.albums, 'album')} {rankBy} /></section>
 		<section class="panel"><h2>Top 5 artists</h2><BarList items={list(data.artists, 'artist')} {rankBy} round /></section>
 	</div>
+
+	{#if data.newArtists.length}
+		<section class="panel">
+			<h2>New to you in {data.year} <small>Artists you first played this year</small></h2>
+			<BarList items={list(data.newArtists, 'artist')} {rankBy} round />
+		</section>
+	{/if}
 
 	<section class="panel">
 		<h2>
