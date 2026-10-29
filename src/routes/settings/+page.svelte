@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { formatWhen, formatDate, TIME_UNITS } from '#lib/time.js';
 	import { fmt } from '#lib/nav.js';
+	import Cover from '#lib/components/Cover.svelte';
 
 	let { data, form } = $props();
 	let importing = $state(false);
@@ -151,6 +152,27 @@
 	<button>Save preferences</button>
 	{#if msg('prefs')?.saved}<p class="ok">Saved.</p>{/if}
 	{#if msg('prefs')?.error}<p class="error">{msg('prefs')?.error}</p>{/if}
+</form>
+
+<h3 class="sub">Profile picture</h3>
+<p class="muted small">Shown next to your name on the People page. Upload a picture, or pick one of your top artists' pictures.</p>
+<form method="POST" action="?section=prefs&/avatar" enctype="multipart/form-data" class="stack avatar">
+	<div class="row">
+		<Cover src={data.u.avatar} alt={data.u.displayName} size={72} round />
+		<label>Upload a picture <input name="file" type="file" accept="image/*" /></label>
+	</div>
+	{#if data.artistPictures.length}
+		<fieldset>
+			<legend>Or pick an artist's picture</legend>
+			<div class="picks">
+				<label class="pick" title="No picture"><input type="radio" name="pick" value="" checked={!data.u.avatar} /><span class="none">None</span></label>
+				{#each data.artistPictures as a (a.id)}
+					<label class="pick" title={a.name}><input type="radio" name="pick" value={a.image} checked={data.u.avatar === a.image} /><Cover src={a.image} alt={a.name} size={56} round /></label>
+				{/each}
+			</div>
+		</fieldset>
+	{/if}
+	<div><button>Save picture</button></div>
 </form>
 {/snippet}
 
@@ -346,6 +368,43 @@
 	}
 	.small {
 		font-size: 0.85rem;
+	}
+	.sub {
+		margin: 24px 0 6px;
+		font-size: 0.95rem;
+	}
+	.picks {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.pick {
+		cursor: pointer;
+		border-radius: 50%;
+		padding: 3px;
+		border: 2px solid transparent;
+	}
+	.pick input {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+	.pick:has(input:checked) {
+		border-color: var(--series-1);
+	}
+	.pick:has(input:focus-visible) {
+		outline: 2px solid var(--series-1);
+	}
+	.pick .none {
+		display: inline-grid;
+		place-items: center;
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background: var(--surface-2);
+		font-size: 0.75rem;
+		color: var(--muted);
 	}
 	code {
 		background: var(--surface-2);

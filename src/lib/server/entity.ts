@@ -19,6 +19,16 @@ export function entityPage(event: RequestEvent, kind: EntityKind) {
 	return { id, row, view, totals: entityTotals(view.ids, COL[kind], id), monthly: monthly(view.ids, COL[kind], id, view.tz) };
 }
 
+/** Saves an uploaded picture under the data directory; returns its /img/ path, or why it was refused. */
+export async function storeUpload(file: File): Promise<{ path: string } | { error: string }> {
+	if (!file.type.startsWith('image/')) return { error: 'Upload an image file.' };
+	if (file.size > 5_000_000) return { error: 'Images must be under 5 MB.' };
+	const ext = (file.type.split('/')[1] ?? 'img').replace(/[^a-z0-9]/g, '');
+	const name = `${randomBytes(12).toString('hex')}.${ext}`;
+	writeFileSync(join(DATA_DIR, 'uploads', name), Buffer.from(await file.arrayBuffer()));
+	return { path: `/img/${name}` };
+}
+
 /** Sets a custom picture from a pasted address or an uploaded file. Empty form clears the custom picture. */
 export async function setImage(event: RequestEvent, kind: EntityKind) {
 	const f = await event.request.formData();
@@ -27,12 +37,9 @@ export async function setImage(event: RequestEvent, kind: EntityKind) {
 	const url = String(f.get('url') ?? '').trim();
 	let value: string | null = null;
 	if (file instanceof File && file.size > 0) {
-		if (!file.type.startsWith('image/')) return fail(400, { imageError: 'Upload an image file.' });
-		if (file.size > 5_000_000) return fail(400, { imageError: 'Images must be under 5 MB.' });
-		const ext = (file.type.split('/')[1] ?? 'img').replace(/[^a-z0-9]/g, '');
-		const name = `${randomBytes(12).toString('hex')}.${ext}`;
-		writeFileSync(join(DATA_DIR, 'uploads', name), Buffer.from(await file.arrayBuffer()));
-		value = `/img/${name}`;
+		const stored = await storeUpload(file);
+		if ('error' in stored) return fail(400, { imageError: stored.error });
+		value = stored.path;
 	} else if (url) {
 		if (!/^https?:\/\//i.test(url)) return fail(400, { imageError: 'Paste an address starting with https://' });
 		value = url;

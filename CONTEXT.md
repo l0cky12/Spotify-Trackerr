@@ -21,3 +21,17 @@ _Avoid_: default app, shared client
 **Needs reconnect**:
 The state of a Spotify Connection whose saved credentials can no longer be used (Spotify revoked them, the own app was removed, or the server's key changed); the person must link again.
 _Avoid_: reauth, expired, broken
+
+### Plays and reports
+
+**Play**:
+One listen of a song by one person: which song, when it ended, how long it ran, and whether it came from an import or a sync. Every stat is counted from plays, so fixing a play (its song or its time) fixes every page.
+_Avoid_: scrobble, listen (as a noun), stream
+
+**Report**:
+A person's listening for one calendar month or year, with the change from the period before.
+_Avoid_: recap, summary, wrapped (that's the Year in review page)
+
+**Template**:
+A saved recipe for a Spotify playlist built from a person's own plays (top songs of a period, an artist as first heard, on this day across the years).
+_Avoid_: preset, generator, smart playlist

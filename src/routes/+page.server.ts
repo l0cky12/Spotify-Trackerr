@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { scopeOf } from '#lib/server/view.js';
-import { top, totals, genres, releaseYears, timeSeries, countDistinct } from '#lib/server/stats.js';
+import { top, totals, genres, releaseYears, timeSeries, countDistinct, periodOf, lastMonthId, newArtists, onThisDay, type Scope } from '#lib/server/stats.js';
 import { get } from '#lib/server/db.js';
 
 export const load: PageServerLoad = (event) => {
@@ -10,7 +10,16 @@ export const load: PageServerLoad = (event) => {
 	const artists = top('artist', scope, 10);
 	const trendArtists = artists.slice(0, 8).map((a) => ({ id: a.id as number, name: a.name as string }));
 	const hasAny = !!get(`SELECT 1 FROM plays WHERE user_id IN (${view.ids.join(',')}) LIMIT 1`);
+	const nowTs = Date.now() / 1000;
+	// Last month's report card: the just-finished calendar month, with the biggest first-time artist.
+	const month = periodOf(view.tz, lastMonthId(view.tz, nowTs))!;
+	const monthScope: Scope = { ids: view.ids, since: month.since, until: month.until, rankBy: view.rankBy, tz: view.tz };
+	const monthTotals = totals(monthScope);
 	return {
+		lastMonth: monthTotals.plays
+			? { id: month.id, label: month.label, totals: monthTotals, tracks: top('track', monthScope, 5), artists: top('artist', monthScope, 5), discovery: newArtists(monthScope, 1)[0] ?? null }
+			: null,
+		blasts: hasAny ? onThisDay(view.ids, view.tz, nowTs, 5, view.rankBy) : [],
 		view,
 		range,
 		since: scope.since,

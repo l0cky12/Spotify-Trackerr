@@ -11,8 +11,10 @@
 	const links = [
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/history', label: 'History' },
+		{ href: '/reports', label: 'Reports' },
 		{ href: '/wrapped', label: 'Year in review' },
 		{ href: '/discover', label: 'Discover', own: true },
+		{ href: '/playlists', label: 'Playlists', own: true },
 		{ href: '/people', label: 'People', own: true },
 		{ href: '/settings', label: 'Settings', own: true }
 	];

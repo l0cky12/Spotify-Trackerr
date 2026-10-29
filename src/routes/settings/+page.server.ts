@@ -19,6 +19,8 @@ import {
 } from '#lib/server/connections.js';
 import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
+import { storeUpload } from '#lib/server/entity.js';
+import { top } from '#lib/server/stats.js';
 import { TIME_UNITS } from '#lib/time.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
@@ -32,8 +34,14 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			rankBy: u.rank_by as string,
 			timeUnit: u.time_unit as string,
 			public: !!u.public,
+			avatar: (u.avatar as string | null) ?? null,
 			...connectionStatus(u)
 		},
+		// Pictures to pick a profile picture from: the person's most played artists that have one.
+		artistPictures: top('artist', { ids: [u.id], since: 0, until: Math.floor(Date.now() / 1000) + 1, rankBy: 'plays', tz: u.timezone }, 24)
+			.filter((a) => a.image)
+			.slice(0, 12)
+			.map((a) => ({ id: a.id, name: a.name, image: a.image as string })),
 		serverApp: spotifyServerAppConfigured(),
 		lastfmLogin: lastfmLoginEnabled(),
 		listenbrainzLogin: listenbrainzLoginEnabled(),
@@ -69,6 +77,25 @@ export const actions = {
 		const unit = String(f.get('time_unit'));
 		const timeUnit = unit in TIME_UNITS ? unit : 'minutes';
 		run('UPDATE users SET display_name = ?, timezone = ?, rank_by = ?, time_unit = ?, public = ? WHERE id = ?', name, tz, f.get('rank_by') === 'minutes' ? 'minutes' : 'plays', timeUnit, f.get('public') ? 1 : 0, locals.user!.id);
+		return { section: 'prefs', saved: true };
+	},
+	/** Sets the profile picture from an upload or one of the person's top-artist pictures; neither clears it. */
+	avatar: async ({ request, locals }) => {
+		const f = await request.formData();
+		const file = f.get('file');
+		const pick = String(f.get('pick') ?? '').trim();
+		let value: string | null = null;
+		if (file instanceof File && file.size > 0) {
+			const stored = await storeUpload(file);
+			if ('error' in stored) return fail(400, { section: 'prefs', error: stored.error });
+			value = stored.path;
+		} else if (pick) {
+			// Only pictures of artists this person actually played; anything else is a forged form.
+			if (!get('SELECT 1 FROM artists a WHERE (a.image = ? OR a.image_override = ?) AND EXISTS (SELECT 1 FROM plays p WHERE p.user_id = ? AND p.artist_id = a.id)', pick, pick, locals.user!.id))
+				return fail(400, { section: 'prefs', error: 'Pick one of the pictures shown.' });
+			value = pick;
+		}
+		run('UPDATE users SET avatar = ? WHERE id = ?', value, locals.user!.id);
 		return { section: 'prefs', saved: true };
 	},
 	password: async ({ request, locals }) => {
