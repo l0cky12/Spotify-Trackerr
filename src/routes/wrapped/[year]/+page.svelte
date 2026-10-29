@@ -85,7 +85,7 @@
 		</section>
 		<section class="panel">
 			<h2>Top genres</h2>
-			{#if data.genres.length}<BarList items={data.genres} {rankBy} covers={false} />{:else}<p class="muted">No genre data yet.</p>{/if}
+			{#if data.genres.length}<BarList items={data.genres.map((g) => ({ ...g, href: u(`/genre/${encodeURIComponent(g.name)}?year=${data.year}`) }))} {rankBy} covers={false} />{:else}<p class="muted">No genre data yet.</p>{/if}
 		</section>
 	</div>
 

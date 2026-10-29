@@ -14,7 +14,8 @@ const IMG = {
 	artist: 'COALESCE(a.image_override, a.image)'
 };
 
-export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '') {
+/** `filter` is extra SQL on `plays p`; its `?` placeholders take `params`. */
+export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '', ...params: unknown[]) {
 	// Rank on plays alone, then join names and images for just the page of winners: joining every play first is several times slower.
 	const col = { track: 'track_id', album: 'album_id', artist: 'artist_id' }[kind];
 	const ranked = `SELECT p.${col} id, COUNT(*) plays, SUM(p.ms_played) ms FROM plays p
@@ -28,7 +29,7 @@ export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '') {
 		artist: `SELECT a.id, a.name, NULL artist, NULL artist_id, ${IMG.artist} image, x.plays, x.ms
 			FROM (${ranked}) x JOIN artists a ON a.id = x.id`
 	}[kind];
-	return all(`${sql} ORDER BY ${order(s.rankBy)}`, s.since, s.until, limit, offset);
+	return all(`${sql} ORDER BY ${order(s.rankBy)}`, s.since, s.until, ...params, limit, offset);
 }
 
 export function countDistinct(kind: Kind, s: Scope) {
@@ -36,12 +37,13 @@ export function countDistinct(kind: Kind, s: Scope) {
 	return get(`SELECT COUNT(DISTINCT p.${col}) n FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ?`, s.since, s.until)!.n as number;
 }
 
-export function totals(s: Scope) {
+export function totals(s: Scope, filter = '', ...params: unknown[]) {
 	return get(
 		`SELECT COUNT(*) plays, COALESCE(SUM(ms_played), 0) ms, COUNT(DISTINCT artist_id) artists, COUNT(DISTINCT track_id) tracks
-		 FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ?`,
+		 FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? ${filter}`,
 		s.since,
-		s.until
+		s.until,
+		...params
 	)!;
 }
 
@@ -66,6 +68,9 @@ export function genres(s: Scope, limit = 12) {
 	)!.n as number;
 	return { rows, covered };
 }
+
+/** Plays by artists tagged with the genre: pass as `top`/`totals` filter + param. */
+export const inGenre = 'AND p.artist_id IN (SELECT artist_id FROM artist_genres WHERE genre = ?)';
 
 /** Plays per release year (from album release dates). */
 export function releaseYears(s: Scope) {

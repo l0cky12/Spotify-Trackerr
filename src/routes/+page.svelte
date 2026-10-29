@@ -7,6 +7,7 @@
 	import Trends from '#lib/components/Trends.svelte';
 	import Cover from '#lib/components/Cover.svelte';
 	import NowPlaying from '#lib/components/NowPlaying.svelte';
+	import Sleeves from '#lib/components/Sleeves.svelte';
 	import Decades from './Decades.svelte';
 	import { u, fmt, minutes, withParams } from '#lib/nav.js';
 	import { RANGES } from '#lib/time.js';
@@ -16,16 +17,9 @@
 	const days = $derived(data.since ? (Date.now() / 1000 - data.since) / 86400 : null);
 	const perDay = $derived(days ? data.totals.plays / days : null);
 	const rankBy = $derived(data.view.rankBy);
-	const value = (r: { plays: number; ms: number }) => (rankBy === 'minutes' ? minutes(r.ms) : r.plays);
-	const unit = $derived(rankBy === 'minutes' ? 'minutes' : 'plays');
 	const prevLabel = $derived(data.range === '24h' ? 'Previous 24 hours' : data.range === 'all' ? '' : `Previous ${RANGES.find((r) => r.id === data.range)!.label.toLowerCase()}`);
 	const everyone = $derived(page.url.searchParams.get('user') === 'all');
 
-	const sleeves = $derived([
-		{ kind: 'Top song', item: data.tracks[0], href: data.tracks[0] && u(`/track/${data.tracks[0].id}`), round: false },
-		{ kind: 'Top album', item: data.albums[0], href: data.albums[0] && u(`/album/${data.albums[0].id}`), round: false },
-		{ kind: 'Top artist', item: data.artists[0], href: data.artists[0] && u(`/artist/${data.artists[0].id}`), round: true }
-	]);
 	const list = (rows: any[], kind: string) =>
 		rows.map((r) => ({ ...r, href: u(`/${kind}/${r.id}`), sub: r.artist, subHref: r.artist_id ? u(`/artist/${r.artist_id}`) : undefined }));
 </script>
@@ -54,22 +48,7 @@
 		<a class="button" href="/settings">Go to Settings</a>
 	</section>
 {:else}
-	<section class="sleeves">
-		{#each sleeves as s (s.kind)}
-			<a class="sleeve" href={s.href ?? undefined} class:none={!s.item}>
-				<div class="art"><Cover src={s.item?.image} alt={s.item?.name ?? s.kind} size={480} round={s.round} /></div>
-				<div class="meta">
-					<span class="kind">{s.kind}</span>
-					<span class="name">{s.item?.name ?? 'Nothing yet'}</span>
-					{#if s.item?.artist}<span class="by">{s.item.artist}</span>{/if}
-					{#if s.item}
-						<span class="count"><span class="big">{fmt(value(s.item))}</span> {unit}</span>
-						<span class="by">{rankBy === 'minutes' ? `${fmt(s.item.plays)} plays` : `${fmt(minutes(s.item.ms))} minutes`}</span>
-					{/if}
-				</div>
-			</a>
-		{/each}
-	</section>
+	<Sleeves track={data.tracks[0]} album={data.albums[0]} artist={data.artists[0]} {rankBy} />
 
 	<dl class="totals">
 		<div><dt>Plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
@@ -109,7 +88,7 @@
 				{#if data.totals.plays}<small>{Math.round((data.genres.covered / data.totals.plays) * 100)}% of plays have genre data</small>{/if}
 			</h2>
 			{#if data.genres.rows.length}
-				<BarList items={data.genres.rows.map((g) => ({ ...g, name: g.name }))} {rankBy} covers={false} />
+				<BarList items={data.genres.rows.map((g) => ({ ...g, href: u(`/genre/${encodeURIComponent(g.name)}?range=${data.range}`) }))} {rankBy} covers={false} />
 			{:else}
 				<p class="muted">Genres appear once artists have been looked up. That runs in the background after an import or sync.</p>
 			{/if}
@@ -180,71 +159,6 @@
 		color: var(--ink-2);
 	}
 
-	/* The three record sleeves are the one loud thing on the page. */
-	.sleeves {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 20px;
-		margin-bottom: 20px;
-	}
-	.sleeve {
-		position: relative;
-		display: block;
-		aspect-ratio: 1;
-		border-radius: 6px;
-		overflow: hidden;
-		text-decoration: none;
-		background: var(--surface);
-	}
-	.sleeve .art,
-	.sleeve .art :global(.cover) {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		border-radius: 0;
-		font-size: 5rem;
-	}
-	.sleeve .meta {
-		position: absolute;
-		inset: auto 0 0 0;
-		padding: 48px 18px 16px;
-		background: linear-gradient(transparent, rgba(10, 8, 14, 0.92) 55%);
-		display: grid;
-		gap: 1px;
-	}
-	.kind {
-		font-size: 0.8rem;
-		color: var(--ink-2);
-	}
-	.name {
-		font-size: 1.25rem;
-		font-weight: 700;
-		line-height: 1.2;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.by {
-		color: var(--ink-2);
-		font-size: 0.85rem;
-	}
-	.count {
-		margin-top: 8px;
-		color: var(--ink-2);
-	}
-	.big {
-		font-size: 3.2rem;
-		font-weight: 800;
-		font-stretch: 62%;
-		color: var(--ink);
-		line-height: 0.9;
-		letter-spacing: -0.01em;
-	}
-	.sleeve:hover .name {
-		text-decoration: underline;
-	}
-
 	.totals {
 		display: flex;
 		flex-wrap: wrap;
@@ -310,12 +224,8 @@
 		}
 	}
 	@media (max-width: 800px) {
-		.grid2,
-		.sleeves {
+		.grid2 {
 			grid-template-columns: 1fr;
-		}
-		.sleeve {
-			aspect-ratio: 4 / 3;
 		}
 	}
 </style>
