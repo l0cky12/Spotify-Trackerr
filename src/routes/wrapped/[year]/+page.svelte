@@ -3,7 +3,6 @@
 	import BarList from '#lib/components/BarList.svelte';
 	import Columns from '#lib/components/Columns.svelte';
 	import Calendar from '#lib/components/Calendar.svelte';
-	import Genres from '#lib/components/Genres.svelte';
 	import { u, fmt, minutes } from '#lib/nav.js';
 	import { monthName } from '#lib/time.js';
 
@@ -85,8 +84,8 @@
 			<Columns labels={MONTHS} values={data.months} name="Plays" highlight={data.months.indexOf(Math.max(...data.months))} />
 		</section>
 		<section class="panel">
-			<h2>Top genres <small>Click one for its top artist, song and album</small></h2>
-			{#if data.genres.length}<Genres genres={data.genres} {rankBy} />{:else}<p class="muted">No genre data yet.</p>{/if}
+			<h2>Top genres</h2>
+			{#if data.genres.length}<BarList items={data.genres.map((g) => ({ ...g, href: u(`/genre/${encodeURIComponent(g.name)}?year=${data.year}`) }))} {rankBy} covers={false} />{:else}<p class="muted">No genre data yet.</p>{/if}
 		</section>
 	</div>
 

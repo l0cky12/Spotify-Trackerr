@@ -6,7 +6,7 @@
 
 <nav class="ranges" aria-label="Time range">
 	{#each RANGES as r (r.id)}
-		<a href={withParams({ range: r.id, before: null })} aria-current={r.id === value ? 'true' : undefined} data-sveltekit-noscroll>{r.label}</a>
+		<a href={withParams({ range: r.id, before: null, year: null })} aria-current={r.id === value ? 'true' : undefined} data-sveltekit-noscroll>{r.label}</a>
 	{/each}
 </nav>
 

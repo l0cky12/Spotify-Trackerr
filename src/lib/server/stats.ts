@@ -1,4 +1,4 @@
-import { all, get, type Row } from './db.js';
+import { all, get } from './db.js';
 import { localizer, monthName } from '../time.js';
 
 export type Kind = 'track' | 'album' | 'artist';
@@ -14,7 +14,8 @@ const IMG = {
 	artist: 'COALESCE(a.image_override, a.image)'
 };
 
-export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '') {
+/** `filter` is extra SQL on `plays p`; its `?` placeholders take `params`. */
+export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '', ...params: unknown[]) {
 	// Rank on plays alone, then join names and images for just the page of winners: joining every play first is several times slower.
 	const col = { track: 'track_id', album: 'album_id', artist: 'artist_id' }[kind];
 	const ranked = `SELECT p.${col} id, COUNT(*) plays, SUM(p.ms_played) ms FROM plays p
@@ -28,7 +29,7 @@ export function top(kind: Kind, s: Scope, limit = 10, offset = 0, filter = '') {
 		artist: `SELECT a.id, a.name, NULL artist, NULL artist_id, ${IMG.artist} image, x.plays, x.ms
 			FROM (${ranked}) x JOIN artists a ON a.id = x.id`
 	}[kind];
-	return all(`${sql} ORDER BY ${order(s.rankBy)}`, s.since, s.until, limit, offset);
+	return all(`${sql} ORDER BY ${order(s.rankBy)}`, s.since, s.until, ...params, limit, offset);
 }
 
 export function countDistinct(kind: Kind, s: Scope) {
@@ -36,12 +37,13 @@ export function countDistinct(kind: Kind, s: Scope) {
 	return get(`SELECT COUNT(DISTINCT p.${col}) n FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ?`, s.since, s.until)!.n as number;
 }
 
-export function totals(s: Scope) {
+export function totals(s: Scope, filter = '', ...params: unknown[]) {
 	return get(
 		`SELECT COUNT(*) plays, COALESCE(SUM(ms_played), 0) ms, COUNT(DISTINCT artist_id) artists, COUNT(DISTINCT track_id) tracks
-		 FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ?`,
+		 FROM plays p WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? ${filter}`,
 		s.since,
-		s.until
+		s.until,
+		...params
 	)!;
 }
 
@@ -64,35 +66,11 @@ export function genres(s: Scope, limit = 12) {
 		s.since,
 		s.until
 	)!.n as number;
-	const tops = genreTops(s, rows.map((r) => r.name as string));
-	return { rows: rows.map((r) => ({ ...r, tops: tops[r.name] ?? {} })), covered };
+	return { rows, covered };
 }
 
-/** The top song, album and artist inside each of `names`, from one pass over the scope's plays. */
-function genreTops(s: Scope, names: string[]) {
-	const out: Record<string, Partial<Record<Kind, Row>>> = {};
-	if (!names.length) return out;
-	const rows = all(
-		`WITH x AS (SELECT p.track_id, p.album_id, p.artist_id, COUNT(*) plays, SUM(p.ms_played) ms FROM plays p
-			WHERE ${users(s.ids)} AND p.played_at >= ? AND p.played_at < ? GROUP BY p.track_id, p.album_id, p.artist_id),
-		g AS (SELECT g.genre, x.* FROM x JOIN artist_genres g ON g.artist_id = x.artist_id WHERE g.genre IN (${names.map(() => '?').join(',')})),
-		r AS (SELECT 'artist' kind, genre, artist_id id, SUM(plays) plays, SUM(ms) ms FROM g GROUP BY genre, artist_id
-			UNION ALL SELECT 'album', genre, album_id, SUM(plays), SUM(ms) FROM g WHERE album_id IS NOT NULL GROUP BY genre, album_id
-			UNION ALL SELECT 'track', genre, track_id, SUM(plays), SUM(ms) FROM g WHERE track_id IS NOT NULL GROUP BY genre, track_id),
-		b AS (SELECT * FROM (SELECT r.*, ROW_NUMBER() OVER (PARTITION BY kind, genre ORDER BY ${order(s.rankBy)}) n FROM r) WHERE n = 1)
-		SELECT b.kind, b.genre, b.id, b.plays, b.ms, COALESCE(t.name, al.name, a.name) name, ar.name artist, ar.id artist_id,
-			CASE b.kind WHEN 'track' THEN ${IMG.track} WHEN 'album' THEN ${IMG.album} ELSE ${IMG.artist} END image
-		FROM b LEFT JOIN tracks t ON b.kind = 'track' AND t.id = b.id
-		LEFT JOIN albums al ON al.id = CASE b.kind WHEN 'track' THEN t.album_id WHEN 'album' THEN b.id END
-		LEFT JOIN artists a ON b.kind = 'artist' AND a.id = b.id
-		LEFT JOIN artists ar ON b.kind != 'artist' AND ar.id = COALESCE(t.artist_id, al.artist_id)`,
-		s.since,
-		s.until,
-		...names
-	);
-	for (const { kind, genre, ...r } of rows) (out[genre] ??= {})[kind as Kind] = r;
-	return out;
-}
+/** Plays by artists tagged with the genre: pass as `top`/`totals` filter + param. */
+export const inGenre = 'AND p.artist_id IN (SELECT artist_id FROM artist_genres WHERE genre = ?)';
 
 /** Plays per release year (from album release dates). */
 export function releaseYears(s: Scope) {
