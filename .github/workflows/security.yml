@@ -62,13 +62,25 @@ jobs:
           skip-dirs: .git,.cache,node_modules
 
   container:
-    name: Container build, smoke, and vulnerabilities
+    name: Container build, smoke, and security
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Also check the built image's history for root users, secrets in ENV, and similar.
+      TRIVY_IMAGE_CONFIG_SCANNERS: misconfig,secret
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Block high and critical Dockerfile misconfigurations
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          skip-dirs: .git,.cache,node_modules
       - run: docker build --pull --tag trackerr:ci .
       - name: Verify production startup and access boundaries
         shell: bash
@@ -83,22 +95,22 @@ jobs:
           test "$(curl "${curl_args[@]}" --output /dev/null --write-out '%{http_code}' "$origin/")" = 303
           test "$(curl "${curl_args[@]}" --output /dev/null --write-out '%{http_code}' "$origin/api/search")" = 401
           test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --header 'Host: untrusted.example' "$origin/login")" = 421
-      - name: Report image vulnerabilities, including unfixed issues
+      - name: Report image vulnerabilities, secrets, and misconfigurations, including unfixed issues
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.76.1
           image-ref: trackerr:ci
-          scanners: vuln
+          scanners: vuln,secret
           format: json
           output: trivy-image.json
           exit-code: '0'
-      - name: Block fixable high and critical image vulnerabilities
-        run: trivy image --cache-dir .cache/trivy --skip-db-update --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 trackerr:ci
-      - name: Save image vulnerability report
+      - name: Block fixable high and critical image vulnerabilities, secrets, and misconfigurations
+        run: trivy image --cache-dir .cache/trivy --skip-db-update --skip-check-update --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 trackerr:ci
+      - name: Save image security report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: image-vulnerabilities
+          name: image-security
           path: trivy-image.json
           if-no-files-found: ignore
           retention-days: 7
