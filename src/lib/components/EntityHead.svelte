@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import Cover from './Cover.svelte';
 	import Columns from './Columns.svelte';
-	import { u, fmt, minutes } from '#lib/nav.js';
+	import { u, fmt, listened, timeUnitTitle } from '#lib/nav.js';
 	import { formatWhen, monthName } from '#lib/time.js';
 
 	let {
@@ -42,7 +42,7 @@
 		{@render children?.()}
 		<dl>
 			<div><dt>Plays</dt><dd>{fmt(totals.plays)}</dd></div>
-			<div><dt>Minutes</dt><dd>{fmt(minutes(totals.ms))}</dd></div>
+			<div><dt>{timeUnitTitle()}</dt><dd>{listened(totals.ms)}</dd></div>
 			{#if monthly.peak}<div><dt>Most played month</dt><dd>{monthName(monthly.peak.m)} {monthly.peak.y} <small>{fmt(monthly.peak.plays)} plays</small></dd></div>{/if}
 			{#if monthly.peakYear}<div><dt>Most played year</dt><dd>{monthly.peakYear.year} <small>{fmt(monthly.peakYear.plays)} plays</small></dd></div>{/if}
 		</dl>

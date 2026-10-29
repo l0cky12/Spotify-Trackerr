@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Cover from './Cover.svelte';
-	import { u, fmt, minutes } from '#lib/nav.js';
+	import { u, fmt, listened, timeUnit } from '#lib/nav.js';
 
 	type Item = { id: number; name: string; artist?: string | null; image?: string | null; plays: number; ms: number };
 	let { track, album, artist, rankBy = 'plays' }: { track?: Item; album?: Item; artist?: Item; rankBy?: string } = $props();
@@ -10,7 +10,6 @@
 		{ kind: 'Top album', item: album, href: album && u(`/album/${album.id}`), round: false },
 		{ kind: 'Top artist', item: artist, href: artist && u(`/artist/${artist.id}`), round: true }
 	]);
-	const value = (r: Item) => (rankBy === 'minutes' ? minutes(r.ms) : r.plays);
 </script>
 
 <section class="sleeves">
@@ -22,8 +21,8 @@
 				<span class="name">{s.item?.name ?? 'Nothing yet'}</span>
 				{#if s.item?.artist}<span class="by">{s.item.artist}</span>{/if}
 				{#if s.item}
-					<span class="count"><span class="big">{fmt(value(s.item))}</span> {rankBy === 'minutes' ? 'minutes' : 'plays'}</span>
-					<span class="by">{rankBy === 'minutes' ? `${fmt(s.item.plays)} plays` : `${fmt(minutes(s.item.ms))} minutes`}</span>
+					<span class="count"><span class="big">{rankBy === 'minutes' ? listened(s.item.ms) : fmt(s.item.plays)}</span> {rankBy === 'minutes' ? timeUnit() : 'plays'}</span>
+					<span class="by">{rankBy === 'minutes' ? `${fmt(s.item.plays)} plays` : `${listened(s.item.ms)} ${timeUnit()}`}</span>
 				{/if}
 			</div>
 		</a>

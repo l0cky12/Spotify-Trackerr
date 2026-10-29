@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { formatWhen, formatDate } from '#lib/time.js';
+	import { formatWhen, formatDate, TIME_UNITS } from '#lib/time.js';
 	import { fmt } from '#lib/nav.js';
 
 	let { data, form } = $props();
@@ -139,8 +139,14 @@
 	<fieldset>
 		<legend>Rank top songs, albums and artists by</legend>
 		<label class="inline"><input type="radio" name="rank_by" value="plays" checked={data.u.rankBy === 'plays'} /> Number of plays</label>
-		<label class="inline"><input type="radio" name="rank_by" value="minutes" checked={data.u.rankBy === 'minutes'} /> Minutes listened</label>
+		<label class="inline"><input type="radio" name="rank_by" value="minutes" checked={data.u.rankBy === 'minutes'} /> Time listened</label>
 	</fieldset>
+	<label>
+		Show time listened in
+		<select name="time_unit" value={data.u.timeUnit}>
+			{#each Object.keys(TIME_UNITS) as unit (unit)}<option value={unit}>{unit[0].toUpperCase() + unit.slice(1)}</option>{/each}
+		</select>
+	</label>
 	<label class="inline"><input type="checkbox" name="public" checked={data.u.public} /> Let other people on this server see my listening</label>
 	<button>Save preferences</button>
 	{#if msg('prefs')?.saved}<p class="ok">Saved.</p>{/if}

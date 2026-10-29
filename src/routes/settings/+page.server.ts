@@ -19,6 +19,7 @@ import {
 } from '#lib/server/connections.js';
 import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
+import { TIME_UNITS } from '#lib/time.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -29,6 +30,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			hasPassword: !!u.password_hash,
 			timezone: u.timezone as string,
 			rankBy: u.rank_by as string,
+			timeUnit: u.time_unit as string,
 			public: !!u.public,
 			...connectionStatus(u)
 		},
@@ -64,7 +66,9 @@ export const actions = {
 		const tz = String(f.get('timezone'));
 		if (!Intl.supportedValuesOf('timeZone').includes(tz) && tz !== 'UTC') return fail(400, { section: 'prefs', error: 'Pick a time zone from the list.' });
 		const name = String(f.get('display_name') ?? '').trim().slice(0, 60) || locals.user!.display_name;
-		run('UPDATE users SET display_name = ?, timezone = ?, rank_by = ?, public = ? WHERE id = ?', name, tz, f.get('rank_by') === 'minutes' ? 'minutes' : 'plays', f.get('public') ? 1 : 0, locals.user!.id);
+		const unit = String(f.get('time_unit'));
+		const timeUnit = unit in TIME_UNITS ? unit : 'minutes';
+		run('UPDATE users SET display_name = ?, timezone = ?, rank_by = ?, time_unit = ?, public = ? WHERE id = ?', name, tz, f.get('rank_by') === 'minutes' ? 'minutes' : 'plays', timeUnit, f.get('public') ? 1 : 0, locals.user!.id);
 		return { section: 'prefs', saved: true };
 	},
 	password: async ({ request, locals }) => {
