@@ -73,6 +73,9 @@ npm test
 npm run check
 ```
 
+GitHub Actions runs tests, type checks, browser smoke tests, dependency/security scans, and Docker checks.
+See [.github/README.md](.github/README.md) for local commands, schedules, and repository settings to enable after merging.
+
 Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default). Spotify tokens and secrets pasted
 into Settings are encrypted with `$DATA_DIR/secret.key`; back it up with the database, or everyone has to reconnect
 Spotify and enter their own app (and the admin the Last.fm app) again.

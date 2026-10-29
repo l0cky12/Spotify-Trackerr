@@ -3,3 +3,5 @@ build
 .svelte-kit
 data
 .env
+test-results
+playwright-report

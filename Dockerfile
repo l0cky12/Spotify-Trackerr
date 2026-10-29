@@ -17,7 +17,10 @@ ENV NODE_ENV=production \
 COPY --from=build /app/build build
 COPY --from=build /app/node_modules node_modules
 COPY package.json server.js ./
-RUN mkdir /data && chown node /data
+# Production starts Node directly; the bundled npm CLI adds unused vulnerable dependencies.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && mkdir /data && chown node /data
 VOLUME /data
 USER node
 EXPOSE 3000
