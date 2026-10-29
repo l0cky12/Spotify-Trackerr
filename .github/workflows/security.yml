@@ -93,7 +93,7 @@ jobs:
           output: trivy-image.json
           exit-code: '0'
       - name: Block fixable high and critical image vulnerabilities
-        run: trivy image --skip-db-update --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 trackerr:ci
+        run: trivy image --cache-dir .cache/trivy --skip-db-update --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 trackerr:ci
       - name: Save image vulnerability report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
