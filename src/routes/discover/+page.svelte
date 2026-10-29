@@ -6,7 +6,8 @@
 	import { page } from '$app/state';
 	let { data, form } = $props();
 	let busy = $state(false);
-	// Shelves scroll sideways; "See all" wraps one into a grid.
+	// A shelf shows its first 10 picks; "See more" opens it into a grid of all of them, "See all" opens every shelf.
+	const SHOWN = 10;
 	let open = $state<Record<string, boolean>>({});
 
 	const shelves = $derived(
@@ -18,6 +19,12 @@
 				]
 			: []
 	);
+	const long = $derived(shelves.filter((s) => s.items.length > SHOWN));
+	const allOpen = $derived(long.every((s) => open[s.id]));
+	const toggleAll = () => {
+		const to = !allOpen;
+		for (const s of long) open[s.id] = to;
+	};
 	type Pick = (typeof shelves)[number]['items'][number];
 	const name = (r: Pick) => r.title ?? r.album ?? r.artist;
 	const local = (r: Pick) => (r.trackId ? `/track/${r.trackId}` : r.albumId ? `/album/${r.albumId}` : !r.title && !r.album && r.artistId ? `/artist/${r.artistId}` : null);
@@ -48,6 +55,7 @@
 		>
 			<button disabled={busy}>{busy ? 'Finding new music…' : data.picks ? 'Refresh picks' : 'Find new music'}</button>
 		</form>
+		{#if long.length}<button class="secondary" aria-expanded={allOpen} onclick={toggleAll}>{allOpen ? 'Show less' : 'See all'}</button>{/if}
 		<span class="muted small">
 			{#if data.lastfmUser}Using Last.fm account <b>{data.lastfmUser}</b>{:else if data.listenbrainzUser}Using ListenBrainz account <b>{data.listenbrainzUser}</b>{:else}Sign in with <a href="/settings?section=lastfm">Last.fm</a> or <a href="/settings?section=listenbrainz">ListenBrainz</a> for picks from everything you listen to{/if}
 			{#if data.picks}· Updated {formatWhen(data.picks.at, page.data.me.tz)}{/if}
@@ -60,14 +68,11 @@
 		<section class="panel">
 			<h2>
 				{s.title}
-				<small>
-					{s.items.length} picks
-					{#if s.items.length > 6}· <button class="link" onclick={() => (open[s.id] = !open[s.id])}>{open[s.id] ? 'Show less' : 'See all'}</button>{/if}
-				</small>
+				<small>{s.items.length} picks</small>
 			</h2>
 			{#if s.items.length}
-				<ul class="shelf" class:all={open[s.id]}>
-					{#each s.items as r, i (i)}
+				<ul class="shelf" class:all={open[s.id]} id="shelf-{s.id}">
+					{#each open[s.id] ? s.items : s.items.slice(0, SHOWN) as r, i (i)}
 						{@const href = local(r)}
 						<li class:round={s.round}>
 							<a href={href ? u(href) : r.url} target={href ? undefined : '_blank'} rel={href ? undefined : 'noopener'}>
@@ -78,6 +83,11 @@
 						</li>
 					{/each}
 				</ul>
+				{#if s.items.length > SHOWN}
+					<button class="secondary more" aria-expanded={!!open[s.id]} aria-controls="shelf-{s.id}" onclick={() => (open[s.id] = !open[s.id])}>
+						{open[s.id] ? 'Show less' : `See ${s.items.length - SHOWN} more`}
+					</button>
+				{/if}
 			{:else}
 				<p class="muted">No new {s.title.toLowerCase()} this time.</p>
 			{/if}
@@ -103,14 +113,10 @@
 	.panel {
 		margin-bottom: 16px;
 	}
-	button.link {
-		background: none;
-		padding: 0;
-		color: inherit;
-		font-size: inherit;
-		text-decoration: underline;
-		text-decoration-color: var(--axis);
-		text-underline-offset: 3px;
+	.more {
+		display: block;
+		width: 100%;
+		margin-top: 12px;
 	}
 	.shelf {
 		list-style: none;

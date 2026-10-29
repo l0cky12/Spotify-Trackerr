@@ -45,19 +45,19 @@ function localize(r: Rec): Rec {
 
 const WEEK = 7 * 86400;
 
-export async function similarTracks(artist: string, title: string): Promise<Rec[]> {
+export async function similarTracks(artist: string, title: string, limit = 15): Promise<Rec[]> {
 	if (!lastfmApp()) return [];
-	const list = await cached(`lfm:track:${key(artist)}:${key(title)}`, WEEK, async () => {
-		const r = await lastfm({ method: 'track.getsimilar', artist, track: title, autocorrect: '1', limit: '15' });
+	const list = await cached(`lfm:track:${limit}:${key(artist)}:${key(title)}`, WEEK, async () => {
+		const r = await lastfm({ method: 'track.getsimilar', artist, track: title, autocorrect: '1', limit: String(limit) });
 		return (r.similartracks?.track ?? []).filter((t: any) => Number(t.match) >= 0.05).map((t: any) => ({ title: t.name, artist: t.artist?.name }));
 	}).catch(() => []);
 	return list.filter((r: Rec) => validName(r.artist) && validName(r.title)).map(localize);
 }
 
-export async function similarArtists(artist: string): Promise<Rec[]> {
+export async function similarArtists(artist: string, limit = 12): Promise<Rec[]> {
 	if (!lastfmApp()) return [];
-	const list = await cached(`lfm:artist:${key(artist)}`, WEEK, async () => {
-		const r = await lastfm({ method: 'artist.getsimilar', artist, autocorrect: '1', limit: '12' });
+	const list = await cached(`lfm:artist:${limit}:${key(artist)}`, WEEK, async () => {
+		const r = await lastfm({ method: 'artist.getsimilar', artist, autocorrect: '1', limit: String(limit) });
 		return (r.similarartists?.artist ?? []).map((a: any) => ({ artist: a.name }));
 	}).catch(() => []);
 	return list.filter((r: Rec) => validName(r.artist)).map(localize);
@@ -90,26 +90,30 @@ async function deezerImage(r: Rec): Promise<string | null> {
 	}).catch(() => null);
 }
 
-/** Check only the candidate picks against Last.fm's lifetime user counts, rather than downloading history. */
+/**
+ * Check only the candidate picks against Last.fm's lifetime user counts, rather than downloading history.
+ * All at once: getJson's Last.fm queue paces the requests.
+ */
 async function unheard(list: Rec[], username: string | null): Promise<Rec[]> {
 	if (!username) return list;
-	const out: Rec[] = [];
-	for (const r of list) {
-		const kind = r.title ? 'track' : r.album ? 'album' : 'artist';
-		let info;
-		try {
-			info = await lastfm({ method: `${kind}.getInfo`, artist: r.artist, username, autocorrect: '1', ...(r.title ? { track: r.title } : r.album ? { album: r.album } : {}) });
-		} catch (e) {
-			if ((e as { code?: number }).code === 6) continue; // Unknown candidate: don't recommend unverified music.
-			throw new Error('Could not check your Last.fm listening history. Try again later.');
-		}
-		const count = kind === 'artist' ? info.artist?.stats?.userplaycount : info[kind]?.userplaycount;
-		const plays = typeof count === 'string' && /^\d+$/.test(count) ? Number(count) : typeof count === 'number' ? count : NaN;
-		if (!Number.isSafeInteger(plays) || plays < 0)
-			throw new Error('Last.fm did not return a listening count. Try again later.');
-		if (plays === 0) out.push(r);
-	}
-	return out;
+	const keep = await Promise.all(
+		list.map(async (r) => {
+			const kind = r.title ? 'track' : r.album ? 'album' : 'artist';
+			let info;
+			try {
+				info = await lastfm({ method: `${kind}.getInfo`, artist: r.artist, username, autocorrect: '1', ...(r.title ? { track: r.title } : r.album ? { album: r.album } : {}) });
+			} catch (e) {
+				if ((e as { code?: number }).code === 6) return false; // Unknown candidate: don't recommend unverified music.
+				throw new Error('Could not check your Last.fm listening history. Try again later.');
+			}
+			const count = kind === 'artist' ? info.artist?.stats?.userplaycount : info[kind]?.userplaycount;
+			const plays = typeof count === 'string' && /^\d+$/.test(count) ? Number(count) : typeof count === 'number' ? count : NaN;
+			if (!Number.isSafeInteger(plays) || plays < 0)
+				throw new Error('Last.fm did not return a listening count. Try again later.');
+			return plays === 0;
+		})
+	);
+	return list.filter((_, i) => keep[i]);
 }
 
 /** Round-robin across the seeds' lists so one seed doesn't fill the shelf; drops repeats. */
@@ -135,6 +139,10 @@ export const bareTitle = (s: string) =>
 	loose(key(s).replace(/\s*[([][^)\]]*[)\]]/gu, '').replace(/\s+[-–]\s+.*$/u, '').replace(/\s+remix$/u, '')) || loose(s);
 /** A Last.fm collaboration name and its members: "Bad Omens, Poppy" → itself, "Bad Omens", "Poppy". */
 export const members = (s: string) => [...new Set([s, ...s.split(/\s*(?:,|&|\+|\s(?:x|feat\.?|ft\.?)\s)\s*/iu).filter((x) => x.trim())])];
+
+// Last.fm's similar lists per seed, and the most picks a shelf keeps once heard music is dropped.
+const PER_SEED = 50;
+const MAX_PICKS = 50;
 
 /** The user's top 5 for the last 30 days, or all time if they played nothing lately. */
 function topLocal(sql: string, userId: number) {
@@ -188,22 +196,26 @@ export async function buildDiscover(user: Row) {
 	const heardSongs = new Set([...seedSongs, ...credited].map(songKey));
 
 	const artists = await unheard(interleave(
-		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s)).filter((r) => !isHeardArtist(r.artist)).map((r) => ({ ...r, why: s })))),
+		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s, PER_SEED)).filter((r) => !isHeardArtist(r.artist)).map((r) => ({ ...r, why: s })))),
 		(r) => loose(r.artist),
-		12
+		MAX_PICKS
 	), user.lastfm_user ?? null);
 	const songs = await unheard(interleave(
-		await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title })))),
+		await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title })))),
 		songKey,
-		30
+		MAX_PICKS
 	), user.lastfm_user ?? null);
-	const albums: Rec[] = [];
-	for (const a of artists) {
+	// Each new artist's best-known album, checked on its own: Last.fm may file it under another spelling of the artist.
+	const albums = (await Promise.all(artists.map(async (a) => {
 		const al = await topAlbum(a.artist);
-		if (al && (!al.albumId || !get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId))) albums.push({ ...al, why: a.why });
-	}
+		return al && (!al.albumId || !get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId)) ? { ...al, why: a.why } : null;
+	}))).filter((r) => r !== null);
 	const newAlbums = await unheard(albums, user.lastfm_user ?? null);
-	for (const r of [...artists, ...newAlbums, ...songs]) if (!r.image) r.image = await deezerImage(r);
+	// One cover first: if Deezer is down that pauses it, and the rest skip instead of queueing behind the pause.
+	const coverless = [...artists, ...newAlbums, ...songs].filter((r) => !r.image);
+	const cover = async (r: Rec) => void (r.image = await deezerImage(r));
+	if (coverless.length) await cover(coverless[0]);
+	await Promise.all(coverless.slice(1).map(cover));
 
 	const value = {
 		seeds: seedArtists,
