@@ -5,6 +5,7 @@
 	import favicon from '#lib/assets/favicon.svg';
 	import { u } from '#lib/nav.js';
 	import { formatDate } from '#lib/time.js';
+	import { openInApp } from '#lib/spotify-app.js';
 
 	let { data, children } = $props();
 	const links = [
@@ -22,6 +23,8 @@
 	<link rel="icon" href={favicon} />
 	<title>Spotify Trackerr</title>
 </svelte:head>
+
+<svelte:document onclick={openInApp} />
 
 {#if data.me}
 	<header>
