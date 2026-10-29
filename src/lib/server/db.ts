@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
 	is_admin INTEGER NOT NULL DEFAULT 0,
 	timezone TEXT NOT NULL DEFAULT 'UTC',
 	rank_by TEXT NOT NULL DEFAULT 'plays' CHECK (rank_by IN ('plays', 'minutes')),
+	time_unit TEXT NOT NULL DEFAULT 'minutes',
 	public INTEGER NOT NULL DEFAULT 0,
 	spotify_id TEXT UNIQUE,
 	spotify_access TEXT,
@@ -125,6 +126,7 @@ CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, fet
 export const userColumns = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
 if (!userColumns.includes('lastfm_user')) db.exec('ALTER TABLE users ADD COLUMN lastfm_user TEXT');
 if (!userColumns.includes('listenbrainz_user')) db.exec('ALTER TABLE users ADD COLUMN listenbrainz_user TEXT');
+if (!userColumns.includes('time_unit')) db.exec("ALTER TABLE users ADD COLUMN time_unit TEXT NOT NULL DEFAULT 'minutes'");
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 
 export const now = () => Math.floor(Date.now() / 1000);

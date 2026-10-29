@@ -1,6 +1,7 @@
 import type { LayoutServerLoad } from './$types';
 import { connectionStatus } from '#lib/server/connections.js';
 import { get } from '#lib/server/db.js';
+import type { TimeUnit } from '#lib/time.js';
 
 export const load: LayoutServerLoad = ({ locals, url }) => {
 	const u = locals.user;
@@ -14,6 +15,7 @@ export const load: LayoutServerLoad = ({ locals, url }) => {
 			isAdmin: !!u.is_admin,
 			tz: u.timezone as string,
 			rankBy: u.rank_by as 'plays' | 'minutes',
+			timeUnit: u.time_unit as TimeUnit,
 			spotify: connectionStatus(u)
 		},
 		viewing

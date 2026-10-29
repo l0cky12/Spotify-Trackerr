@@ -91,3 +91,7 @@ export function formatWhen(ts: number, tz: string, withYear = true) {
 export function formatDate(ts: number, tz: string) {
 	return new Date(ts * 1000).toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+/** Units for showing time listened, in ms; a month is the average month (365.25 / 12 days). */
+export const TIME_UNITS = { minutes: 60000, hours: 3600000, days: 86400000, months: 2629800000 };
+export type TimeUnit = keyof typeof TIME_UNITS;

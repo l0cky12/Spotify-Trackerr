@@ -9,7 +9,7 @@
 	import NowPlaying from '#lib/components/NowPlaying.svelte';
 	import Sleeves from '#lib/components/Sleeves.svelte';
 	import Decades from './Decades.svelte';
-	import { u, fmt, minutes, withParams } from '#lib/nav.js';
+	import { u, fmt, listened, timeUnitTitle, withParams } from '#lib/nav.js';
 	import { RANGES } from '#lib/time.js';
 
 	let { data } = $props();
@@ -27,7 +27,7 @@
 <div class="top">
 	<div>
 		<h1>{data.view.label ?? 'Your listening'}</h1>
-		<p class="muted">Last {rangeLabel === 'all time' ? 'everything' : rangeLabel}{data.view.rankBy === 'minutes' ? ', ranked by minutes listened' : ''}</p>
+		<p class="muted">Last {rangeLabel === 'all time' ? 'everything' : rangeLabel}{data.view.rankBy === 'minutes' ? ', ranked by time listened' : ''}</p>
 	</div>
 	<div class="controls">
 		{#if data.otherViewers && !data.view.readonly}
@@ -52,7 +52,7 @@
 
 	<dl class="totals">
 		<div><dt>Plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
-		<div><dt>Minutes</dt><dd>{fmt(minutes(data.totals.ms))}</dd></div>
+		<div><dt>{timeUnitTitle()}</dt><dd>{listened(data.totals.ms)}</dd></div>
 		<div><dt>Artists</dt><dd>{fmt(data.totals.artists)}</dd></div>
 		<div><dt>Albums</dt><dd>{fmt(data.albumsCount)}</dd></div>
 		<div><dt>Songs</dt><dd>{fmt(data.totals.tracks)}</dd></div>
