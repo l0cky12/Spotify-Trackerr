@@ -1,18 +1,19 @@
 <script lang="ts">
 	import Cover from './Cover.svelte';
-	import { fmt, minutes } from '#lib/nav.js';
+	import { fmt, listened, timeUnit } from '#lib/nav.js';
 
 	type Item = { name: string; sub?: string | null; href?: string; subHref?: string; image?: string | null; plays: number; ms: number };
 	let { items, rankBy = 'plays', round = false, start = 0, covers = true }: { items: Item[]; rankBy?: string; round?: boolean; start?: number; covers?: boolean } =
 		$props();
 
-	const val = (i: Item) => (rankBy === 'minutes' ? minutes(i.ms) : i.plays);
+	const val = (i: Item) => (rankBy === 'minutes' ? i.ms : i.plays);
 	const max = $derived(Math.max(1, ...items.map(val)));
+	const unit = () => (timeUnit() === 'minutes' ? 'min' : timeUnit());
 </script>
 
 <ol class="bars" {start}>
 	{#each items as item, i (item.href ?? i)}
-		<li title="{item.name}: {fmt(item.plays)} plays, {fmt(minutes(item.ms))} minutes">
+		<li title="{item.name}: {fmt(item.plays)} plays, {listened(item.ms)} {timeUnit()}">
 			<span class="rank">{start + i + 1}</span>
 			{#if covers}<Cover src={item.image} alt={item.name} size={36} {round} />{/if}
 			<span class="text">
@@ -21,8 +22,8 @@
 				<span class="track"><span class="bar" style:width="{(val(item) / max) * 100}%"></span></span>
 			</span>
 			<span class="value">
-				{fmt(val(item))}
-				<small>{rankBy === 'minutes' ? `${fmt(item.plays)} plays` : `${fmt(minutes(item.ms))} min`}</small>
+				{rankBy === 'minutes' ? `${listened(item.ms)} ${unit()}` : fmt(item.plays)}
+				<small>{rankBy === 'minutes' ? `${fmt(item.plays)} plays` : `${listened(item.ms)} ${unit()}`}</small>
 			</span>
 		</li>
 	{:else}

@@ -1,6 +1,6 @@
 import { get, type Row } from './db.js';
 import { spotifyAppId, spotifyToken, spotifyAppToken, activeSpotifyLinks, activeSpotifyLink, recordSync, SpotifyError } from './connections.js';
-import { upsertArtist, upsertAlbum, upsertTrack, insertPlay, key } from './ingest.js';
+import { upsertArtist, upsertAlbum, upsertTrack, insertPlay, setFeatures, key } from './ingest.js';
 
 const pausedUntil = new Map<string, number>();
 
@@ -41,6 +41,7 @@ export async function syncAll() {
 				const year = parseInt(t.album?.release_date ?? '', 10) || undefined;
 				const albumId = t.album?.name ? upsertAlbum(artistId, t.album.name, { image: t.album.images?.[0]?.url, year }) : null;
 				const track = upsertTrack(artistId, albumId, t.name, t.id, t.duration_ms);
+				setFeatures(track.id, t.artists.slice(1).map((a: any) => a?.name).filter((n: unknown) => typeof n === 'string' && n.trim()));
 				const ok = insertPlay({
 					userId: user.id,
 					trackId: track.id,
@@ -62,6 +63,27 @@ export async function syncAll() {
 			recordSync(user.id, e);
 		}
 	}
+}
+
+/**
+ * Looks up the featured artists of one song that has none recorded yet (imported history only names the main artist),
+ * so Discover counts them as heard. Spotify dropped its batch track lookup in February 2026, hence one song per call.
+ */
+export async function creditStep() {
+	const t = get('SELECT id, spotify_id FROM tracks WHERE credits_done = 0 AND spotify_id IS NOT NULL LIMIT 1');
+	const user = t && activeSpotifyLinks()[0];
+	if (!user) return false;
+	let r;
+	try {
+		r = await api(user, `/tracks/${encodeURIComponent(t.spotify_id)}`);
+	} catch (e) {
+		// A song Spotify no longer has can't be looked up; anything else (rate limit, network) is retried later.
+		if (e instanceof SpotifyError && (e.status === 400 || e.status === 404)) setFeatures(t.id, []);
+		return false;
+	}
+	if (!Array.isArray(r?.artists)) return false;
+	setFeatures(t.id, r.artists.slice(1).map((a: any) => a?.name).filter((n: unknown) => typeof n === 'string' && n.trim()));
+	return true;
 }
 
 const nowPlayingCache = new Map<number, { at: number; value: unknown }>();
