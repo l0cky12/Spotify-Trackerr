@@ -1,4 +1,4 @@
-import { syncAll } from './spotify.js';
+import { syncAll, creditStep } from './spotify.js';
 import { deezerStep, itunesStep, genreStep, retryGenresWithLastfm } from './enrich.js';
 
 /** A loop that runs `step` every `ms`, never overlapping itself, and logs instead of crashing. */
@@ -30,4 +30,6 @@ export function startJobs() {
 	every(400, deezerStep);
 	every(3500, itunesStep);
 	every(1500, genreStep);
+	// One Spotify call per song; about 40 per 30 s keeps well clear of the rate limit that would also pause sync.
+	every(1500, creditStep);
 }

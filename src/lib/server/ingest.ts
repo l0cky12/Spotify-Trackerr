@@ -58,6 +58,12 @@ export function upsertTrack(artistId: number, albumId: number | null, name: stri
 	return { id, durationMs: durationMs ?? null };
 }
 
+/** Saves the artists credited on a song besides its main one, and marks its credits as looked up. */
+export function setFeatures(trackId: number, names: string[]) {
+	for (const n of names) run('INSERT OR IGNORE INTO track_features (track_id, name) VALUES (?, ?)', trackId, n);
+	run('UPDATE tracks SET credits_done = 1 WHERE id = ?', trackId);
+}
+
 /**
  * Inserts a play unless it duplicates one already stored.
  * Same source: duplicate only on the exact same timestamp (re-imported file, overlapping sync pages).

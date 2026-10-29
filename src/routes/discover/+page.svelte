@@ -51,6 +51,7 @@
 		<span class="muted small">
 			{#if data.lastfmUser}Using Last.fm account <b>{data.lastfmUser}</b>{:else if data.listenbrainzUser}Using ListenBrainz account <b>{data.listenbrainzUser}</b>{:else}Sign in with <a href="/settings?section=lastfm">Last.fm</a> or <a href="/settings?section=listenbrainz">ListenBrainz</a> for picks from everything you listen to{/if}
 			{#if data.picks}· Updated {formatWhen(data.picks.at, page.data.me.tz)}{/if}
+			{#if data.checking}· Still looking up featured artists on {data.checking.toLocaleString()} songs, so a few artists you've heard on someone else's song may slip through until then{/if}
 		</span>
 	</div>
 	{#if form?.error}<p class="error">{form.error}</p>{/if}

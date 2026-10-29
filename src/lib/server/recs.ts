@@ -128,6 +128,14 @@ export function interleave<T>(lists: T[][], id: (x: T) => string, max: number): 
 	return out;
 }
 
+/** Looser than key(): ignores punctuation and spacing, so Last.fm's "breakkaway" matches Spotify's "breakk.away". */
+export const loose = (s: string) => key(s).replace(/[^\p{L}\p{N}]/gu, '') || key(s);
+/** A song title without its "(feat. …)", "[Live]" or " - Recorded at …" tail, so another version of a song you played counts as played. */
+export const bareTitle = (s: string) =>
+	loose(key(s).replace(/\s*[([][^)\]]*[)\]]/gu, '').replace(/\s+[-–]\s+.*$/u, '').replace(/\s+remix$/u, '')) || loose(s);
+/** A Last.fm collaboration name and its members: "Bad Omens, Poppy" → itself, "Bad Omens", "Poppy". */
+export const members = (s: string) => [...new Set([s, ...s.split(/\s*(?:,|&|\+|\s(?:x|feat\.?|ft\.?)\s)\s*/iu).filter((x) => x.trim())])];
+
 /** The user's top 5 for the last 30 days, or all time if they played nothing lately. */
 function topLocal(sql: string, userId: number) {
 	const rows = all(sql, userId, now() - 30 * 86400);
@@ -167,17 +175,21 @@ export async function buildDiscover(user: Row) {
 			user.id
 		) as { artist: string; title: string }[];
 
-	const heardArtists = new Set([...seedArtists.map(key), ...all('SELECT DISTINCT a.key FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ?', user.id).map((r) => r.key as string)]);
-	const songKey = (r: { artist: string; title?: string }) => key(r.artist) + '\0' + key(r.title ?? '');
-	const heardSongs = new Set(
-		[...seedSongs.map(songKey), ...all('SELECT DISTINCT a.key ak, t.key tk FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ?', user.id).map(
-			(r) => r.ak + '\0' + r.tk
-		)]
-	);
+	// Everyone credited on a song counts as heard, featured artists included; so does a song under any of its artists.
+	const credited = all(
+		`SELECT a.key artist, t.key title FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ? GROUP BY t.id
+		 UNION SELECT f.name, t.key FROM plays p JOIN tracks t ON t.id = p.track_id JOIN track_features f ON f.track_id = t.id WHERE p.user_id = ? GROUP BY t.id, f.name`,
+		user.id,
+		user.id
+	) as { artist: string; title: string }[];
+	const heardArtists = new Set([...seedArtists, ...credited.map((r) => r.artist)].map(loose));
+	const isHeardArtist = (name: string) => members(name).some((m) => heardArtists.has(loose(m)));
+	const songKey = (r: { artist: string; title?: string }) => loose(r.artist) + '\0' + bareTitle(r.title ?? '');
+	const heardSongs = new Set([...seedSongs, ...credited].map(songKey));
 
 	const artists = await unheard(interleave(
-		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s)).filter((r) => !heardArtists.has(key(r.artist))).map((r) => ({ ...r, why: s })))),
-		(r) => key(r.artist),
+		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s)).filter((r) => !isHeardArtist(r.artist)).map((r) => ({ ...r, why: s })))),
+		(r) => loose(r.artist),
 		12
 	), user.lastfm_user ?? null);
 	const songs = await unheard(interleave(

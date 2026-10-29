@@ -74,3 +74,14 @@ test('Discover seeds from ListenBrainz when the user has no Last.fm account', as
 	expect(r.seeds).toEqual(['LB Seed']);
 	expect(r.listenbrainzUser).toBe('lb-me');
 });
+
+test('Discover treats spelling and version differences of a played artist or song as played', async () => {
+	const { loose, bareTitle } = await import('./recs.js');
+	expect(loose('breakkaway')).toBe(loose('breakk.away'));
+	expect(bareTitle("Still Swingin'")).toBe(bareTitle('Still Swingin'));
+	expect(bareTitle('Zombie - Recorded at Hansa Studios')).toBe(bareTitle('Zombie'));
+	expect(bareTitle('Teenage Kicks (feat. X)')).toBe(bareTitle('Teenage Kicks'));
+	expect(loose('Небесный душ')).not.toBe(loose('Ο Ήχος της Βροχής'));
+	expect(bareTitle('(Intro)')).not.toBe('');
+	expect(bareTitle('Song A')).not.toBe(bareTitle('Song B'));
+});
