@@ -10,6 +10,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	return {
 		enabled: !!lastfmApp(),
 		lastfmUser: locals.user!.lastfm_user as string | null,
+		listenbrainzUser: locals.user!.listenbrainz_user as string | null,
 		picks: saved && { ...saved, artists: withUrl(saved.artists), albums: withUrl(saved.albums), songs: withUrl(saved.songs) }
 	};
 };

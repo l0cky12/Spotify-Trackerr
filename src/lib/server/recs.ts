@@ -5,6 +5,12 @@ import { lastfm, realPicture, getJson, same } from './enrich.js';
 
 const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
 
+/** ListenBrainz stats for the last month; empty when it hasn't computed them yet (204). */
+async function listenbrainzTop(user: string, kind: 'artists' | 'recordings') {
+	const r = await getJson(`https://api.listenbrainz.org/1/stats/user/${encodeURIComponent(user)}/${kind}?` + new URLSearchParams({ range: 'month', count: '5' })).catch(() => null);
+	return Array.isArray(r?.payload?.[kind]) ? (r.payload[kind] as any[]) : [];
+}
+
 export type Rec = {
 	artist: string;
 	title?: string;
@@ -131,7 +137,7 @@ function topLocal(sql: string, userId: number) {
 /**
  * Artists, albums and songs the user hasn't played, from Last.fm's similar artists and songs.
  * Seeds are their Last.fm top artists and songs of the last month when they've signed in to Last.fm,
- * otherwise what they played most here.
+ * else their ListenBrainz ones when they've signed in there, otherwise what they played most here.
  */
 export async function buildDiscover(user: Row) {
 	let seedArtists: string[] = [];
@@ -144,6 +150,11 @@ export async function buildDiscover(user: Row) {
 		]);
 		seedArtists = (Array.isArray(a?.topartists?.artist) ? a.topartists.artist : []).filter((x: any) => validName(x?.name)).map((x: any) => x.name);
 		seedSongs = (Array.isArray(t?.toptracks?.track) ? t.toptracks.track : []).filter((x: any) => validName(x?.name) && validName(x?.artist?.name)).map((x: any) => ({ artist: x.artist.name, title: x.name }));
+	}
+	if (!seedArtists.length && user.listenbrainz_user) {
+		const [a, t] = await Promise.all([listenbrainzTop(user.listenbrainz_user, 'artists'), listenbrainzTop(user.listenbrainz_user, 'recordings')]);
+		seedArtists = a.filter((x) => validName(x?.artist_name)).map((x) => x.artist_name);
+		if (!seedSongs.length) seedSongs = t.filter((x) => validName(x?.recording_name) && validName(x?.artist_credit_name)).map((x) => ({ artist: x.artist_credit_name, title: x.recording_name }));
 	}
 	if (!seedArtists.length)
 		seedArtists = topLocal(
@@ -182,15 +193,25 @@ export async function buildDiscover(user: Row) {
 	const newAlbums = await unheard(albums, user.lastfm_user ?? null);
 	for (const r of [...artists, ...newAlbums, ...songs]) if (!r.image) r.image = await deezerImage(r);
 
-	const value = { seeds: seedArtists, lastfmUser: user.lastfm_user ?? null, fromLastfm: !!user.lastfm_user, artists, albums: newAlbums, songs, at: now() };
+	const value = {
+		seeds: seedArtists,
+		lastfmUser: user.lastfm_user ?? null,
+		listenbrainzUser: user.listenbrainz_user ?? null,
+		fromLastfm: !!user.lastfm_user,
+		artists,
+		albums: newAlbums,
+		songs,
+		at: now()
+	};
 	if (!artists.length && !songs.length) return value;
 	run(
-		'INSERT INTO cache (key, value, fetched_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND lastfm_user IS ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
+		'INSERT INTO cache (key, value, fetched_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND lastfm_user IS ? AND listenbrainz_user IS ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
 		`discover:${user.id}`,
 		JSON.stringify(value),
 		value.at,
 		user.id,
-		value.lastfmUser
+		value.lastfmUser,
+		value.listenbrainzUser
 	);
 	return value;
 }
@@ -199,7 +220,8 @@ export function savedDiscover(userId: number) {
 	const r = get('SELECT value FROM cache WHERE key = ?', `discover:${userId}`);
 	const v = r ? (JSON.parse(r.value) as Awaited<ReturnType<typeof buildDiscover>>) : null;
 	// Picks saved before Discover had shelves were a single song list.
-	return v?.artists && v.lastfmUser === (get('SELECT lastfm_user FROM users WHERE id = ?', userId)?.lastfm_user ?? null) ? v : null;
+	const u = get('SELECT lastfm_user, listenbrainz_user FROM users WHERE id = ?', userId);
+	return v?.artists && v.lastfmUser === (u?.lastfm_user ?? null) && (v.listenbrainzUser ?? null) === (u?.listenbrainz_user ?? null) ? v : null;
 }
 
 export const spotifySearchUrl = (r: Rec) =>

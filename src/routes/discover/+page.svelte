@@ -26,7 +26,7 @@
 <h1>Discover</h1>
 <p class="muted lede">
 	Artists, albums and songs you haven't played yet, picked by Last.fm from
-	{data.lastfmUser ? 'your Last.fm top artists and songs' : "what you've played most"} in the last month.
+	{data.lastfmUser ? 'your Last.fm top artists and songs' : data.listenbrainzUser ? 'your ListenBrainz top artists and songs' : "what you've played most"} in the last month.
 </p>
 
 {#if !data.enabled}
@@ -49,7 +49,7 @@
 			<button disabled={busy}>{busy ? 'Finding new music…' : data.picks ? 'Refresh picks' : 'Find new music'}</button>
 		</form>
 		<span class="muted small">
-			{#if data.lastfmUser}Using Last.fm account <b>{data.lastfmUser}</b>{:else}<a href="/settings?section=lastfm">Sign in with Last.fm</a> for picks from everything you scrobble{/if}
+			{#if data.lastfmUser}Using Last.fm account <b>{data.lastfmUser}</b>{:else if data.listenbrainzUser}Using ListenBrainz account <b>{data.listenbrainzUser}</b>{:else}Sign in with <a href="/settings?section=lastfm">Last.fm</a> or <a href="/settings?section=listenbrainz">ListenBrainz</a> for picks from everything you listen to{/if}
 			{#if data.picks}· Updated {formatWhen(data.picks.at, page.data.me.tz)}{/if}
 		</span>
 	</div>

@@ -8,9 +8,11 @@ import {
 	LINKED_SQL,
 	lastfmApp,
 	lastfmLoginEnabled,
+	listenbrainzLoginEnabled,
 	savedLastfmKey,
 	setLastfmServerApp,
 	setLastfmUser,
+	setListenbrainzUser,
 	setOwnApp,
 	spotifyServerAppConfigured,
 	unlinkSpotify
@@ -32,6 +34,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		},
 		serverApp: spotifyServerAppConfigured(),
 		lastfmLogin: lastfmLoginEnabled(),
+		listenbrainzLogin: listenbrainzLoginEnabled(),
+		listenbrainzCallback: `${url.origin}/auth/listenbrainz/callback`,
 		callback: `${url.origin}/auth/spotify/callback`,
 		imports: all('SELECT * FROM imports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', u.id),
 		pending: get('SELECT COUNT(*) n FROM tracks WHERE enriched != 1')!.n as number,
@@ -95,6 +99,10 @@ export const actions = {
 	lastfmUnlink: async ({ locals }) => {
 		setLastfmUser(locals.user!.id, null);
 		return { section: 'lastfm', saved: true };
+	},
+	listenbrainzUnlink: async ({ locals }) => {
+		setListenbrainzUser(locals.user!.id, null);
+		return { section: 'listenbrainz', saved: true };
 	},
 	lastfmApp: async ({ request, locals }) => {
 		requireAdmin(locals);

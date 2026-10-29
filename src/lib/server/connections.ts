@@ -2,9 +2,9 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { db, DATA_DIR, userColumns, all, get, run, now, tx, setting, setSetting, type Row } from './db.js';
-import { lastfm } from './enrich.js';
+import { lastfm, getJson, UA } from './enrich.js';
 
-// A person's Connections: their Spotify link (tokens, which app it went through, sync state) and their Last.fm username,
+// A person's Connections: their Spotify link (tokens, which app it went through, sync state) and their Last.fm and ListenBrainz usernames,
 // plus the server's own Spotify and Last.fm apps. Nothing outside this file reads those columns or knows they're encrypted.
 
 const SCOPES = 'user-read-recently-played user-read-currently-playing';
@@ -245,7 +245,8 @@ export function connectionStatus(u: Row) {
 		expiringSoon: !!expiresAt && expiresAt - now() < 14 * 86400,
 		ownClientId: (u.own_client_id as string | null) ?? null,
 		usesOwnApp: !!u.spotify_own_app,
-		lastfmUser: (u.lastfm_user as string | null) ?? null
+		lastfmUser: (u.lastfm_user as string | null) ?? null,
+		listenbrainzUser: (u.listenbrainz_user as string | null) ?? null
 	};
 }
 
@@ -303,6 +304,41 @@ export async function lastfmUsername(token: string) {
 export function setLastfmUser(userId: number, username: string | null) {
 	tx(() => {
 		run('UPDATE users SET lastfm_user = ? WHERE id = ?', username, userId);
+		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
+	});
+}
+
+// ---- ListenBrainz ----
+
+/** ListenBrainz accounts are MusicBrainz accounts, so signing in goes through a MusicBrainz OAuth app. */
+export const listenbrainzLoginEnabled = () => !!process.env.MUSICBRAINZ_CLIENT_ID && !!process.env.MUSICBRAINZ_CLIENT_SECRET;
+
+export const listenbrainzAuthUrl = (redirect_uri: string, state: string) =>
+	'https://musicbrainz.org/oauth2/authorize?' +
+	new URLSearchParams({ response_type: 'code', client_id: process.env.MUSICBRAINZ_CLIENT_ID!, redirect_uri, scope: 'profile', state, access_type: 'online' });
+
+/** Trades the code from MusicBrainz's sign-in redirect for the username, and checks it has a ListenBrainz account. */
+export async function listenbrainzUsername(code: string, redirect_uri: string) {
+	const mb = async (path: string, init: RequestInit) => {
+		const res = await fetch('https://musicbrainz.org/oauth2/' + path, { ...init, headers: { 'User-Agent': UA, ...init.headers }, signal: AbortSignal.timeout(10_000) });
+		if (!res.ok) throw new Error(`MusicBrainz returned ${res.status}`);
+		return res.json();
+	};
+	const t = await mb('token', {
+		method: 'POST',
+		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: process.env.MUSICBRAINZ_CLIENT_ID!, client_secret: process.env.MUSICBRAINZ_CLIENT_SECRET! })
+	});
+	const me = await mb('userinfo', { headers: { Authorization: `Bearer ${t.access_token}` } });
+	if (typeof me.sub !== 'string' || !me.sub.trim()) throw new Error('MusicBrainz returned an invalid username.');
+	// 404 here means the MusicBrainz account has never opened ListenBrainz.
+	await getJson(`https://api.listenbrainz.org/1/user/${encodeURIComponent(me.sub)}/listen-count`);
+	return me.sub as string;
+}
+
+/** Sets (or with null, removes) the person's ListenBrainz username. Discover picks belong to the old one, so they go too. */
+export function setListenbrainzUser(userId: number, username: string | null) {
+	tx(() => {
+		run('UPDATE users SET listenbrainz_user = ? WHERE id = ?', username, userId);
 		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
 	});
 }

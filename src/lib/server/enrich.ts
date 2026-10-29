@@ -3,7 +3,7 @@ import { key } from './ingest.js';
 import { appApi } from './spotify.js';
 import { lastfmApp } from './connections.js';
 
-const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
+export const UA = 'SpotifyTrackerr/1.0 (self-hosted listening stats)';
 const queues = new Map<string, { pending: Promise<void>; next: number }>();
 let deezerPausedUntil = 0;
 

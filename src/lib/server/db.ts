@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
 	own_client_id TEXT,
 	own_client_secret TEXT,
 	lastfm_user TEXT,
+	listenbrainz_user TEXT,
 	created_at INTEGER NOT NULL
 );
 
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, fet
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to an existing database.
 export const userColumns = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
 if (!userColumns.includes('lastfm_user')) db.exec('ALTER TABLE users ADD COLUMN lastfm_user TEXT');
+if (!userColumns.includes('listenbrainz_user')) db.exec('ALTER TABLE users ADD COLUMN listenbrainz_user TEXT');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 
 export const now = () => Math.floor(Date.now() / 1000);
