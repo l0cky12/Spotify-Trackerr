@@ -31,7 +31,7 @@
 
 {#if !data.enabled}
 	<section class="panel">
-		<p>Discover needs Last.fm. The admin can add <code>LASTFM_API_KEY</code> to the server settings; a free app at last.fm/api provides one.</p>
+		<p>Discover needs Last.fm, which isn't turned on for this server yet. An admin can turn it on in <a href="/settings?section=lastfm">Settings → Last.fm</a>.</p>
 	</section>
 {:else}
 	<div class="actions">
@@ -154,10 +154,5 @@
 	}
 	.round {
 		text-align: center;
-	}
-	code {
-		background: var(--surface-2);
-		padding: 1px 5px;
-		border-radius: 4px;
 	}
 </style>

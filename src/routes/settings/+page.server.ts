@@ -2,7 +2,20 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
-import { connectionStatus, LINKED_SQL, lastfmLoginEnabled, setLastfmUser, setOwnApp, spotifyServerAppConfigured, unlinkSpotify } from '#lib/server/connections.js';
+import {
+	checkLastfmApp,
+	connectionStatus,
+	LINKED_SQL,
+	lastfmApp,
+	lastfmLoginEnabled,
+	savedLastfmKey,
+	setLastfmServerApp,
+	setLastfmUser,
+	setOwnApp,
+	spotifyServerAppConfigured,
+	unlinkSpotify
+} from '#lib/server/connections.js';
+import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
@@ -15,8 +28,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			timezone: u.timezone as string,
 			rankBy: u.rank_by as string,
 			public: !!u.public,
-			...connectionStatus(u),
-			isAdmin: !!u.is_admin
+			...connectionStatus(u)
 		},
 		serverApp: spotifyServerAppConfigured(),
 		lastfmLogin: lastfmLoginEnabled(),
@@ -30,6 +42,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		admin: u.is_admin
 			? {
 					allowSignup: setting('allow_signup') === '1',
+					lastfmFromEnv: !!lastfmApp()?.fromEnv,
+					lastfmKey: savedLastfmKey(),
 					users: all(`SELECT id, username, display_name, is_admin, ${LINKED_SQL} linked, (SELECT COUNT(*) FROM plays WHERE user_id = users.id) plays FROM users ORDER BY id`)
 				}
 			: null
@@ -80,6 +94,20 @@ export const actions = {
 	},
 	lastfmUnlink: async ({ locals }) => {
 		setLastfmUser(locals.user!.id, null);
+		return { section: 'lastfm', saved: true };
+	},
+	lastfmApp: async ({ request, locals }) => {
+		requireAdmin(locals);
+		if (lastfmApp()?.fromEnv) return fail(400, { section: 'lastfm', error: "This server's Last.fm app is set in its .env file; change it there." });
+		const f = await request.formData();
+		const key = String(f.get('api_key') ?? '').trim();
+		const secret = String(f.get('shared_secret') ?? '').trim();
+		if (!/^[a-f0-9]{32}$/i.test(key) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'lastfm', error: 'The API key and shared secret are both 32-character codes from your Last.fm API account page.' });
+		const check = await checkLastfmApp(key, secret);
+		if (check === 'rejected') return fail(400, { section: 'lastfm', error: "Last.fm didn't accept that API key and shared secret. Copy both again from the same app." });
+		if (check === 'unreachable') return fail(502, { section: 'lastfm', error: "Couldn't reach Last.fm to check the key. Try again in a minute." });
+		setLastfmServerApp(key, secret);
+		retryGenresWithLastfm();
 		return { section: 'lastfm', saved: true };
 	},
 	import: async ({ request, locals }) => {

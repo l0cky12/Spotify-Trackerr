@@ -1,4 +1,4 @@
-import { get, run } from './db.js';
+import { get, run, setting, setSetting } from './db.js';
 import { key } from './ingest.js';
 import { appApi } from './spotify.js';
 import { lastfmApp } from './connections.js';
@@ -164,8 +164,16 @@ export async function genreStep() {
 	return true;
 }
 
+/** Once a Last.fm key exists, artists that ended up without genres get another try with Last.fm tags. */
+export function retryGenresWithLastfm() {
+	if (!lastfmApp() || setting('lastfm_seen') === '1') return;
+	run('UPDATE artists SET genres_done = 0 WHERE NOT EXISTS (SELECT 1 FROM artist_genres g WHERE g.artist_id = artists.id)');
+	setSetting('lastfm_seen', '1');
+}
+
+/** Calls Last.fm with the server app's key, unless `params` brings its own (checking a key before saving it). */
 export async function lastfm(params: Record<string, string>) {
-	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ ...params, api_key: lastfmApp()?.key ?? '', format: 'json' }));
+	const r = await getJson('https://ws.audioscrobbler.com/2.0/?' + new URLSearchParams({ api_key: lastfmApp()?.key ?? '', ...params, format: 'json' }));
 	if (r.error) throw Object.assign(new Error(r.message), { code: Number(r.error) });
 	return r;
 }

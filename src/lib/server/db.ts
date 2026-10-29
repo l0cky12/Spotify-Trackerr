@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
 export const DATA_DIR = process.env.DATA_DIR ?? './data';
@@ -150,6 +151,35 @@ export function setting(key: string): string | undefined {
 export function setSetting(key: string, value: string) {
 	run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value', key, value);
 }
+
+// Secrets saved in Settings are encrypted with a key kept in its own file, so a copy of the database alone can't reveal them.
+const keyFile = join(DATA_DIR, 'secret.key');
+if (!existsSync(keyFile)) writeFileSync(keyFile, randomBytes(32), { mode: 0o600 });
+const secretKey = readFileSync(keyFile);
+
+/** Encrypts a secret for the database (AES-256-GCM). */
+export function seal(text: string) {
+	const iv = randomBytes(12);
+	const c = createCipheriv('aes-256-gcm', secretKey, iv);
+	const body = Buffer.concat([c.update(text, 'utf8'), c.final()]);
+	return 'enc:' + Buffer.concat([iv, c.getAuthTag(), body]).toString('base64');
+}
+/** Decrypts a sealed secret; null when it's missing or the key file changed. */
+export function unseal(value: string | null | undefined) {
+	if (!value?.startsWith('enc:')) return null;
+	const b = Buffer.from(value.slice(4), 'base64');
+	try {
+		const d = createDecipheriv('aes-256-gcm', secretKey, b.subarray(0, 12));
+		d.setAuthTag(b.subarray(12, 28));
+		return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
+	} catch {
+		return null;
+	}
+}
+
+// Spotify app secrets saved before encryption existed.
+if (userColumns.includes('own_client_secret'))
+	for (const u of all("SELECT id, own_client_secret s FROM users WHERE own_client_secret NOT LIKE 'enc:%'")) run('UPDATE users SET own_client_secret = ? WHERE id = ?', seal(u.s), u.id);
 
 /** JSON cache for third-party lookups. */
 export async function cached<T>(key: string, maxAgeSec: number, fn: () => Promise<T>): Promise<T> {

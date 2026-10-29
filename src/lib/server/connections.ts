@@ -251,8 +251,34 @@ export function connectionStatus(u: Row) {
 
 // ---- Last.fm ----
 
-/** The server's Last.fm app. The shared secret is only needed for "Sign in with Last.fm". */
-export const lastfmApp = () => (process.env.LASTFM_API_KEY ? { key: process.env.LASTFM_API_KEY, secret: process.env.LASTFM_SHARED_SECRET || null } : null);
+/** The server's Last.fm app: from .env if set there, otherwise the one an admin saved in Settings. The shared secret is only needed for "Sign in with Last.fm". */
+export function lastfmApp() {
+	if (process.env.LASTFM_API_KEY) return { key: process.env.LASTFM_API_KEY, secret: process.env.LASTFM_SHARED_SECRET || null, fromEnv: true };
+	const key = setting('lastfm_api_key');
+	return key ? { key, secret: unseal(setting('lastfm_secret')), fromEnv: false } : null;
+}
+/** The Last.fm key an admin saved in Settings (never the secret), for showing in the form. */
+export const savedLastfmKey = () => setting('lastfm_api_key') ?? '';
+
+/** Asks Last.fm whether a key and shared secret belong together; auth.getToken fails unless both are right. */
+export async function checkLastfmApp(key: string, secret: string): Promise<'ok' | 'rejected' | 'unreachable'> {
+	const p = { method: 'auth.getToken', api_key: key };
+	try {
+		await lastfm({ ...p, api_sig: lastfmSig(p, secret) });
+		return 'ok';
+	} catch (e) {
+		// Last.fm answers a wrong key or signature with HTTP 403 (error 10 or 13).
+		const { status, code } = e as { status?: number; code?: number };
+		return status === 403 || (code && code !== 29) ? 'rejected' : 'unreachable';
+	}
+}
+
+export function setLastfmServerApp(key: string, secret: string) {
+	tx(() => {
+		setSetting('lastfm_api_key', key);
+		setSetting('lastfm_secret', seal(secret));
+	});
+}
 export const lastfmLoginEnabled = () => !!lastfmApp()?.secret;
 
 /** Last.fm's api_sig: md5 of every param as name+value, sorted by name, then the shared secret. */
