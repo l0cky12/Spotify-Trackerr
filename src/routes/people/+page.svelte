@@ -1,5 +1,6 @@
 <script lang="ts">
 	import NowPlaying from '#lib/components/NowPlaying.svelte';
+	import Cover from '#lib/components/Cover.svelte';
 	import { fmt } from '#lib/nav.js';
 	let { data } = $props();
 </script>
@@ -15,7 +16,7 @@
 		{#each data.people as p (p.id)}
 			<li class="panel">
 				<div class="who">
-					<a class="name" href="/?user={p.id}">{p.display_name}</a>
+					<a class="name" href="/?user={p.id}"><Cover src={p.avatar} alt={p.display_name} size={44} round /> {p.display_name}</a>
 					<span class="muted">{fmt(p.today)} plays today</span>
 				</div>
 				{#if p.linked}<NowPlaying userId={p.id} compact />{/if}
@@ -56,6 +57,10 @@
 	.name {
 		font-size: 1.2rem;
 		font-weight: 700;
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		text-decoration: none;
 	}
 	nav {
 		display: flex;

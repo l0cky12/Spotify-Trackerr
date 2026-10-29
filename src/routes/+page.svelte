@@ -9,7 +9,7 @@
 	import NowPlaying from '#lib/components/NowPlaying.svelte';
 	import Sleeves from '#lib/components/Sleeves.svelte';
 	import Decades from './Decades.svelte';
-	import { u, fmt, listened, timeUnitTitle, withParams } from '#lib/nav.js';
+	import { u, fmt, listened, timeUnitTitle, timeUnit, withParams } from '#lib/nav.js';
 	import { RANGES } from '#lib/time.js';
 
 	let { data } = $props();
@@ -94,10 +94,59 @@
 			{/if}
 		</section>
 		<section class="panel">
-			<h2>When you listen</h2>
+			<h2>When you listen <a class="more" href={u(`/top/charts?range=${data.range}`)}>Streaks and more charts</a></h2>
 			<Heatmap grid={data.series.grid} />
 		</section>
 	</div>
+
+	{#if data.lastMonth || data.blasts.length}
+		<div class="grid2">
+			{#if data.lastMonth}
+				<section class="panel month">
+					<h2>Last month: {data.lastMonth.label} <a class="more" href={u(`/reports?period=${data.lastMonth.id}`)}>Full report</a></h2>
+					<dl class="mini">
+						<div><dt>Plays</dt><dd>{fmt(data.lastMonth.totals.plays)}</dd></div>
+						<div><dt>{timeUnitTitle()}</dt><dd>{listened(data.lastMonth.totals.ms)}</dd></div>
+						<div><dt>Artists</dt><dd>{fmt(data.lastMonth.totals.artists)}</dd></div>
+					</dl>
+					{#if data.lastMonth.discovery}
+						<a class="discovery" href={u(`/artist/${data.lastMonth.discovery.id}`)}>
+							<Cover src={data.lastMonth.discovery.image} alt={data.lastMonth.discovery.name} size={44} round />
+							<span><small>Biggest new discovery</small><strong>{data.lastMonth.discovery.name}</strong><small>{fmt(data.lastMonth.discovery.plays)} plays, first heard that month</small></span>
+						</a>
+					{/if}
+					<div class="pair">
+						<div><h3>Top songs</h3><BarList items={list(data.lastMonth.tracks, 'track')} {rankBy} covers={false} /></div>
+						<div><h3>Top artists</h3><BarList items={list(data.lastMonth.artists, 'artist')} {rankBy} covers={false} /></div>
+					</div>
+				</section>
+			{/if}
+			{#if data.blasts.length}
+				<section class="panel">
+					<h2>Blasts from the past <small>What you played on this day in earlier years</small></h2>
+					<div class="blasts">
+						{#each data.blasts as b (b.year)}
+							<div class="blast">
+								<h3>
+									{b.yearsAgo === 1 ? 'A year' : `${b.yearsAgo} years`} ago{b.week ? ' this week' : ' today'}
+									<small>{b.year}, {fmt(b.plays)} plays{b.week ? ' that week' : ''}</small>
+								</h3>
+								<ul>
+									{#each b.tracks as t (t.id)}
+										<li>
+											<Cover src={t.image} alt={t.name} size={32} />
+											<span class="what"><a href={u(`/track/${t.id}`)}>{t.name}</a><small>{t.artist}</small></span>
+											<small class="n">{rankBy === 'minutes' ? `${listened(t.ms)} ${timeUnit() === 'minutes' ? 'min' : timeUnit()}` : `${fmt(t.plays)}×`}</small>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
+		</div>
+	{/if}
 
 	<section class="panel">
 		<h2>Top artists over time</h2>
@@ -206,6 +255,96 @@
 		font-size: 0.8rem;
 		font-weight: 400;
 		color: var(--ink-2);
+	}
+	.mini {
+		display: flex;
+		gap: 8px 32px;
+		margin: 0 0 14px;
+		flex-wrap: wrap;
+	}
+	.mini div {
+		display: flex;
+		flex-direction: column-reverse;
+	}
+	.mini dd {
+		font-size: 1.3rem;
+	}
+	.discovery {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+		text-decoration: none;
+		padding: 10px 12px;
+		background: var(--surface-2);
+		border-radius: 8px;
+		margin-bottom: 14px;
+	}
+	.discovery span {
+		display: grid;
+		min-width: 0;
+	}
+	.discovery small {
+		color: var(--ink-2);
+		font-size: 0.78rem;
+	}
+	.pair {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 16px;
+	}
+	h3 {
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--ink-2);
+		margin: 0 0 8px;
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		align-items: baseline;
+	}
+	h3 small {
+		font-weight: 400;
+		color: var(--muted);
+		font-size: 0.78rem;
+	}
+	.blasts {
+		display: grid;
+		gap: 16px;
+	}
+	.blast ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 6px;
+	}
+	.blast li {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		gap: 10px;
+		align-items: center;
+	}
+	.blast .what {
+		display: grid;
+		min-width: 0;
+	}
+	.blast .what a,
+	.blast .what small {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.blast small {
+		color: var(--ink-2);
+		font-size: 0.78rem;
+	}
+	.blast .n {
+		font-variant-numeric: tabular-nums;
+	}
+	@media (max-width: 600px) {
+		.pair {
+			grid-template-columns: 1fr;
+		}
 	}
 	.collage {
 		display: grid;

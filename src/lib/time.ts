@@ -44,8 +44,8 @@ export function localizer(tz: string) {
 }
 
 /** UTC timestamp of a local wall-clock moment in `tz` (month is 0-based, overflow allowed). */
-export function fromLocal(tz: string, y: number, m = 0, d = 1, h = 0) {
-	const guess = Date.UTC(y, m, d, h) / 1000;
+export function fromLocal(tz: string, y: number, m = 0, d = 1, h = 0, min = 0) {
+	const guess = Date.UTC(y, m, d, h, min) / 1000;
 	let ts = guess - offsetAt(tz, guess);
 	ts = guess - offsetAt(tz, ts); // second pass settles DST edges
 	return ts;
@@ -69,6 +69,22 @@ export function parseRange(v: string | null, fallback: RangeId = '7d') {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const monthName = (m: number) => MONTHS[m];
+
+/** 'YYYY' or 'YYYY-MM' for a local calendar year or month (month is 0-based). */
+export const periodId = (y: number, m?: number) => (m === undefined ? `${y}` : `${y}-${String(m + 1).padStart(2, '0')}`);
+/** Parses a period id back to its parts; null for anything else. */
+export function parsePeriod(id: string | null | undefined): { y: number; m?: number } | null {
+	const hit = id?.match(/^(\d{4})(?:-(\d{2}))?$/);
+	if (!hit) return null;
+	const y = Number(hit[1]);
+	if (y < 1970 || y > 2100) return null;
+	if (hit[2] === undefined) return { y };
+	const m = Number(hit[2]) - 1;
+	return m >= 0 && m < 12 ? { y, m } : null;
+}
+/** A local day number (days since 1970-01-01 in local wall-clock time) as 'Mar 4, 2024'. */
+export const dayLabel = (day: number, withYear = true) =>
+	new Date(day * 86400000).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: withYear ? undefined : 'short', month: 'short', day: 'numeric', year: withYear ? 'numeric' : undefined });
 
 export function formatDuration(ms: number) {
 	const min = Math.round(ms / 60000);

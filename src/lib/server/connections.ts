@@ -7,7 +7,8 @@ import { lastfm, getJson, UA } from './enrich.js';
 // A person's Connections: their Spotify link (tokens, which app it went through, sync state) and their Last.fm and ListenBrainz usernames,
 // plus the server's own Spotify and Last.fm apps. Nothing outside this file reads those columns or knows they're encrypted.
 
-const SCOPES = 'user-read-recently-played user-read-currently-playing';
+// playlist-modify-private is for Playlists; links made before it was added get a 403 there until the person reconnects.
+const SCOPES = 'user-read-recently-played user-read-currently-playing playlist-modify-private';
 /** Spotify ends a link 6 months after the user authorizes; refreshing doesn't reset it. */
 const LINK_LIFETIME = 182 * 86400;
 /** Stored in sync_error when the link can't be used any more and the person has to link again. */

@@ -128,6 +128,17 @@ CREATE TABLE IF NOT EXISTS imports (
 );
 
 CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+
+-- Saved playlist templates: kind picks the recipe, params (JSON) fills it in. See playlists.ts.
+CREATE TABLE IF NOT EXISTS playlist_templates (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	name TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	params TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	last_playlist_url TEXT
+);
 `);
 
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to an existing database.
@@ -135,6 +146,8 @@ export const userColumns = (db.prepare('PRAGMA table_info(users)').all() as { na
 if (!userColumns.includes('lastfm_user')) db.exec('ALTER TABLE users ADD COLUMN lastfm_user TEXT');
 if (!userColumns.includes('listenbrainz_user')) db.exec('ALTER TABLE users ADD COLUMN listenbrainz_user TEXT');
 if (!userColumns.includes('time_unit')) db.exec("ALTER TABLE users ADD COLUMN time_unit TEXT NOT NULL DEFAULT 'minutes'");
+// Profile picture: an /img/ upload or one of the person's top-artist pictures (see settings).
+if (!userColumns.includes('avatar')) db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');

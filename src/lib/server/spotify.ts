@@ -8,12 +8,17 @@ const pausedUntil = new Map<string, number>();
  * One Web API call through `appId`. A 429, from the API or from the token refresh before it, pauses every call
  * through that app (sync, now playing, genres) until Spotify says.
  */
-async function call(appId: string, path: string, token: () => Promise<string | null>) {
+async function call(appId: string, path: string, token: () => Promise<string | null>, body?: unknown) {
 	if (Date.now() < (pausedUntil.get(appId) ?? 0)) throw new SpotifyError(429, 'Spotify asked us to slow down.');
 	try {
 		const t = await token();
 		if (!t) return null;
-		const res = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${t}` }, signal: AbortSignal.timeout(10_000) });
+		const res = await fetch(`https://api.spotify.com/v1${path}`, {
+			method: body === undefined ? 'GET' : 'POST',
+			headers: { Authorization: `Bearer ${t}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+			body: body === undefined ? undefined : JSON.stringify(body),
+			signal: AbortSignal.timeout(10_000)
+		});
 		if (res.status === 204) return null;
 		if (res.ok) return res.json();
 		throw new SpotifyError(res.status, `Spotify ${path} returned ${res.status}`, Number(res.headers.get('retry-after') ?? 0));
@@ -23,8 +28,8 @@ async function call(appId: string, path: string, token: () => Promise<string | n
 	}
 }
 
-/** Calls the Web API as `user`. */
-export const api = (user: Row, path: string): Promise<any> => call(spotifyAppId(user), path, () => spotifyToken(user));
+/** Calls the Web API as `user`; with `body` it's a POST. */
+export const api = (user: Row, path: string, body?: unknown): Promise<any> => call(spotifyAppId(user), path, () => spotifyToken(user), body);
 /** Calls the Web API with the server app's own credentials (no user); null when the server has no Spotify app. */
 export const appApi = (path: string): Promise<any> => call(spotifyAppId(null), path, spotifyAppToken);
 

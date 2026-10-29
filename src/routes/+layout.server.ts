@@ -12,6 +12,7 @@ export const load: LayoutServerLoad = ({ locals, url }) => {
 		me: {
 			id: u.id as number,
 			name: u.display_name as string,
+			avatar: (u.avatar as string | null) ?? null,
 			isAdmin: !!u.is_admin,
 			tz: u.timezone as string,
 			rankBy: u.rank_by as 'plays' | 'minutes',
