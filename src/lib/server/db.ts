@@ -86,10 +86,18 @@ CREATE TABLE IF NOT EXISTS tracks (
 	image TEXT,
 	image_override TEXT,
 	enriched INTEGER NOT NULL DEFAULT 0,
+	credits_done INTEGER NOT NULL DEFAULT 0,
 	UNIQUE (artist_id, key)
 );
 CREATE INDEX IF NOT EXISTS tracks_spotify ON tracks (spotify_id);
 CREATE INDEX IF NOT EXISTS tracks_enriched ON tracks (enriched);
+
+-- Artists credited on a song besides its main one (Spotify's featured artists); credits_done marks songs already looked up.
+CREATE TABLE IF NOT EXISTS track_features (
+	track_id INTEGER NOT NULL REFERENCES tracks,
+	name TEXT NOT NULL,
+	PRIMARY KEY (track_id, name)
+);
 
 CREATE TABLE IF NOT EXISTS plays (
 	id INTEGER PRIMARY KEY,
@@ -128,6 +136,9 @@ if (!userColumns.includes('lastfm_user')) db.exec('ALTER TABLE users ADD COLUMN 
 if (!userColumns.includes('listenbrainz_user')) db.exec('ALTER TABLE users ADD COLUMN listenbrainz_user TEXT');
 if (!userColumns.includes('time_unit')) db.exec("ALTER TABLE users ADD COLUMN time_unit TEXT NOT NULL DEFAULT 'minutes'");
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
+if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
+	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');
+db.exec('CREATE INDEX IF NOT EXISTS tracks_credits ON tracks (credits_done)');
 
 export const now = () => Math.floor(Date.now() / 1000);
 

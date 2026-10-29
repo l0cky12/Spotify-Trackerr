@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { buildDiscover, savedDiscover, spotifySearchUrl, type Rec } from '#lib/server/recs.js';
 import { lastfmApp } from '#lib/server/connections.js';
+import { get } from '#lib/server/db.js';
 
 const withUrl = (l: Rec[]) => l.map((r) => ({ ...r, url: spotifySearchUrl(r) }));
 
@@ -11,6 +12,7 @@ export const load: PageServerLoad = ({ locals }) => {
 		enabled: !!lastfmApp(),
 		lastfmUser: locals.user!.lastfm_user as string | null,
 		listenbrainzUser: locals.user!.listenbrainz_user as string | null,
+		checking: get('SELECT COUNT(*) n FROM tracks WHERE credits_done = 0 AND spotify_id IS NOT NULL')!.n as number,
 		picks: saved && { ...saved, artists: withUrl(saved.artists), albums: withUrl(saved.albums), songs: withUrl(saved.songs) }
 	};
 };
