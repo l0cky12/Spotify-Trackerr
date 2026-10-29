@@ -1,0 +1,104 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: npm audit --include=dev --audit-level=high
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime, development, unknown
+          license-check: false
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          exit-code: '1'
+          skip-dirs: .git,.cache,node_modules
+
+  container:
+    name: Container build, smoke, and vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - run: docker build --pull --tag trackerr:ci .
+      - name: Verify production startup and access boundaries
+        shell: bash
+        run: |
+          container=$(docker run --detach --publish 127.0.0.1::3000 \
+            --env ALLOWED_HOSTS=http://127.0.0.1:3000 trackerr:ci)
+          trap 'docker logs "$container"; docker rm --force --volumes "$container"' EXIT
+          origin="http://$(docker port "$container" 3000/tcp)"
+          curl_args=(--silent --show-error --header 'Host: 127.0.0.1:3000')
+          curl "${curl_args[@]}" --fail --retry 15 --retry-delay 1 --retry-all-errors \
+            "$origin/login" > /dev/null
+          test "$(curl "${curl_args[@]}" --output /dev/null --write-out '%{http_code}' "$origin/")" = 303
+          test "$(curl "${curl_args[@]}" --output /dev/null --write-out '%{http_code}' "$origin/api/search")" = 401
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --header 'Host: untrusted.example' "$origin/login")" = 421
+      - name: Report image vulnerabilities, including unfixed issues
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          image-ref: trackerr:ci
+          scanners: vuln
+          format: json
+          output: trivy-image.json
+          exit-code: '0'
+      - name: Block fixable high and critical image vulnerabilities
+        run: trivy image --skip-db-update --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 trackerr:ci
+      - name: Save image vulnerability report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-vulnerabilities
+          path: trivy-image.json
+          if-no-files-found: ignore
+          retention-days: 7
