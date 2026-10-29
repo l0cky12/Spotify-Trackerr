@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { randomBytes } from 'node:crypto';
-import { listenbrainzAuthUrl, listenbrainzLoginEnabled } from '#lib/server/recs.js';
+import { listenbrainzAuthUrl, listenbrainzLoginEnabled } from '#lib/server/connections.js';
 
 // Starts "Sign in with ListenBrainz" from Settings, through MusicBrainz's OAuth (ListenBrainz uses MusicBrainz accounts).
 export function GET({ url, locals, cookies }) {

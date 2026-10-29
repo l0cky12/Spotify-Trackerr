@@ -1,7 +1,8 @@
 import type { Actions, PageServerLoad } from './$types';
 import { get } from '#lib/server/db.js';
 import { entityPage, setImage } from '#lib/server/entity.js';
-import { similarTracks, lastfmEnabled, spotifySearchUrl } from '#lib/server/recs.js';
+import { similarTracks, spotifySearchUrl } from '#lib/server/recs.js';
+import { lastfmApp } from '#lib/server/connections.js';
 
 export const load: PageServerLoad = (event) => {
 	const e = entityPage(event, 'track');
@@ -13,7 +14,7 @@ export const load: PageServerLoad = (event) => {
 		image: t.image_override ?? t.image ?? album?.image ?? null,
 		artist,
 		album,
-		lastfm: lastfmEnabled(),
+		lastfm: !!lastfmApp(),
 		similar: similarTracks(artist.name, t.name).then((l) => l.map((r) => ({ ...r, url: spotifySearchUrl(r) })))
 	};
 };

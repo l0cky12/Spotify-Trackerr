@@ -71,3 +71,20 @@ test('time zone helpers and bucketing', () => {
 	const mo = s.monthly([1], 'artist_id', m.upsertArtist('Radiohead'), 'America/New_York');
 	expect(mo.peak).toMatchObject({ y: 2024, m: 2, plays: 3 });
 });
+
+test('new artists are the ones first played in the year', () => {
+	dbm.run("INSERT INTO users (id, display_name, timezone, created_at) VALUES (2, 'b', 'UTC', 0)");
+	const play = (artist: string, iso: string) => {
+		const a = m.upsertArtist(artist);
+		const tr = m.upsertTrack(a, null, `${artist} song`, undefined, 200_000);
+		m.insertPlay({ userId: 2, trackId: tr.id, albumId: null, artistId: a, msPlayed: 200_000, source: 'sync', durationMs: 200_000, playedAt: Date.parse(iso) / 1000 });
+	};
+	play('Old Friend', '2023-06-01T00:00:00Z');
+	play('Old Friend', '2024-06-01T00:00:00Z');
+	play('Fresh Face', '2024-07-01T00:00:00Z');
+	play('Fresh Face', '2024-07-02T00:00:00Z');
+	play('Later Find', '2025-01-05T00:00:00Z');
+	const scope = { ids: [2], since: Date.parse('2024-01-01T00:00:00Z') / 1000, until: Date.parse('2025-01-01T00:00:00Z') / 1000, rankBy: 'plays' as const, tz: 'UTC' };
+	expect(s.newArtists(scope).map((r) => [r.name, r.plays])).toEqual([['Fresh Face', 2]]);
+	expect(s.newArtistsIn(scope)).toBe(1);
+});

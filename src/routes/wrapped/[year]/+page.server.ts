@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { viewOf } from '#lib/server/view.js';
-import { top, totals, genres, releaseYears, yearDays, newArtistsIn, firstPlay, type Scope } from '#lib/server/stats.js';
+import { top, totals, genres, releaseYears, yearDays, newArtistsIn, newArtists, firstPlay, type Scope } from '#lib/server/stats.js';
 import { fromLocal, localizer } from '#lib/time.js';
 
 export const load: PageServerLoad = (event) => {
@@ -16,13 +16,17 @@ export const load: PageServerLoad = (event) => {
 
 	const scope: Scope = { ids: view.ids, since: fromLocal(view.tz, year, 0, 1), until: fromLocal(view.tz, year + 1, 0, 1), rankBy: view.rankBy, tz: view.tz };
 	const cal = yearDays(scope, year);
-	const best = Object.entries(cal.days).reduce<[string, number] | null>((a, b) => (!a || b[1] > a[1] ? b : a), null);
+	const entries = Object.entries(cal.days).filter(([, n]) => n > 0);
+	const best = entries.reduce<[string, number] | null>((a, b) => (!a || b[1] > a[1] ? b : a), null);
+	const worst = entries.reduce<[string, number] | null>((a, b) => (!a || b[1] < a[1] ? b : a), null);
+	const day = (e: [string, number] | null) => (e ? { month: Number(e[0].split('-')[0]), day: Number(e[0].split('-')[1]), plays: e[1] } : null);
 	return {
 		view,
 		year,
 		years,
 		totals: totals(scope),
-		newArtists: newArtistsIn(scope),
+		newArtistCount: newArtistsIn(scope),
+		newArtists: newArtists(scope, 10),
 		tracks: top('track', scope, 5),
 		albums: top('album', scope, 5),
 		artists: top('artist', scope, 5),
@@ -30,6 +34,7 @@ export const load: PageServerLoad = (event) => {
 		releaseYears: releaseYears(scope),
 		days: cal.days,
 		months: cal.months,
-		bestDay: best ? { month: Number(best[0].split('-')[0]), day: Number(best[0].split('-')[1]), plays: best[1] } : null
+		bestDay: day(best),
+		quietestDay: day(worst)
 	};
 };

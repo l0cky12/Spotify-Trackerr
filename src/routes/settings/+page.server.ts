@@ -2,9 +2,23 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
-import { LINK_LIFETIME, serverAppConfigured, unlink } from '#lib/server/spotify.js';
+import {
+	checkLastfmApp,
+	connectionStatus,
+	LINKED_SQL,
+	lastfmApp,
+	lastfmLoginEnabled,
+	listenbrainzLoginEnabled,
+	savedLastfmKey,
+	setLastfmServerApp,
+	setLastfmUser,
+	setListenbrainzUser,
+	setOwnApp,
+	spotifyServerAppConfigured,
+	unlinkSpotify
+} from '#lib/server/connections.js';
+import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
-import { lastfmLoginEnabled, listenbrainzLoginEnabled, setLastfmUser, setListenbrainzUser } from '#lib/server/recs.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -16,17 +30,9 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			timezone: u.timezone as string,
 			rankBy: u.rank_by as string,
 			public: !!u.public,
-			linked: !!u.spotify_refresh,
-			lastSync: u.last_sync_at as number | null,
-			syncError: u.sync_error as string | null,
-			linkExpires: u.spotify_authorized_at ? (u.spotify_authorized_at as number) + LINK_LIFETIME : null,
-			ownClientId: u.own_client_id as string | null,
-			usesOwnApp: !!u.spotify_own_app,
-			lastfmUser: u.lastfm_user as string | null,
-			listenbrainzUser: u.listenbrainz_user as string | null,
-			isAdmin: !!u.is_admin
+			...connectionStatus(u)
 		},
-		serverApp: serverAppConfigured(),
+		serverApp: spotifyServerAppConfigured(),
 		lastfmLogin: lastfmLoginEnabled(),
 		listenbrainzLogin: listenbrainzLoginEnabled(),
 		listenbrainzCallback: `${url.origin}/auth/listenbrainz/callback`,
@@ -40,7 +46,9 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		admin: u.is_admin
 			? {
 					allowSignup: setting('allow_signup') === '1',
-					users: all('SELECT id, username, display_name, is_admin, spotify_refresh IS NOT NULL linked, (SELECT COUNT(*) FROM plays WHERE user_id = users.id) plays FROM users ORDER BY id')
+					lastfmFromEnv: !!lastfmApp()?.fromEnv,
+					lastfmKey: savedLastfmKey(),
+					users: all(`SELECT id, username, display_name, is_admin, ${LINKED_SQL} linked, (SELECT COUNT(*) FROM plays WHERE user_id = users.id) plays FROM users ORDER BY id`)
 				}
 			: null
 	};
@@ -73,7 +81,7 @@ export const actions = {
 	},
 	unlink: async ({ locals }) => {
 		if (!locals.user!.password_hash) return fail(400, { section: 'spotify', error: 'Set a username and password first; otherwise you could no longer log in.' });
-		unlink(locals.user!.id);
+		unlinkSpotify(locals.user!.id);
 		return { section: 'spotify', saved: true };
 	},
 	ownApp: async ({ request, locals }) => {
@@ -81,12 +89,11 @@ export const actions = {
 		const id = String(f.get('client_id') ?? '').trim();
 		const secret = String(f.get('client_secret') ?? '').trim();
 		if (f.get('clear')) {
-			run('UPDATE users SET own_client_id = NULL, own_client_secret = NULL WHERE id = ?', locals.user!.id);
+			setOwnApp(locals.user!.id, null);
 			return { section: 'ownApp', saved: true };
 		}
 		if (!/^[a-f0-9]{32}$/i.test(id) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'ownApp', error: 'Client ID and secret are both 32-character codes from the Spotify dashboard.' });
-		// ponytail: secret stored in plain text in the server's database; encrypt at rest if the DB ever leaves this box.
-		run('UPDATE users SET own_client_id = ?, own_client_secret = ? WHERE id = ?', id, secret, locals.user!.id);
+		setOwnApp(locals.user!.id, { id, secret });
 		return { section: 'ownApp', saved: true };
 	},
 	lastfmUnlink: async ({ locals }) => {
@@ -96,6 +103,20 @@ export const actions = {
 	listenbrainzUnlink: async ({ locals }) => {
 		setListenbrainzUser(locals.user!.id, null);
 		return { section: 'listenbrainz', saved: true };
+	},
+	lastfmApp: async ({ request, locals }) => {
+		requireAdmin(locals);
+		if (lastfmApp()?.fromEnv) return fail(400, { section: 'lastfm', error: "This server's Last.fm app is set in its .env file; change it there." });
+		const f = await request.formData();
+		const key = String(f.get('api_key') ?? '').trim();
+		const secret = String(f.get('shared_secret') ?? '').trim();
+		if (!/^[a-f0-9]{32}$/i.test(key) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'lastfm', error: 'The API key and shared secret are both 32-character codes from your Last.fm API account page.' });
+		const check = await checkLastfmApp(key, secret);
+		if (check === 'rejected') return fail(400, { section: 'lastfm', error: "Last.fm didn't accept that API key and shared secret. Copy both again from the same app." });
+		if (check === 'unreachable') return fail(502, { section: 'lastfm', error: "Couldn't reach Last.fm to check the key. Try again in a minute." });
+		setLastfmServerApp(key, secret);
+		retryGenresWithLastfm();
+		return { section: 'lastfm', saved: true };
 	},
 	import: async ({ request, locals }) => {
 		const files = (await request.formData()).getAll('files').filter((f): f is File => f instanceof File && f.size > 0);

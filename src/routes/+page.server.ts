@@ -8,7 +8,7 @@ export const load: PageServerLoad = (event) => {
 	const tracks = top('track', scope, 10);
 	const albums = top('album', scope, 16);
 	const artists = top('artist', scope, 10);
-	const trendArtists = top('artist', scope, 8).map((a) => ({ id: a.id as number, name: a.name as string }));
+	const trendArtists = artists.slice(0, 8).map((a) => ({ id: a.id as number, name: a.name as string }));
 	const hasAny = !!get(`SELECT 1 FROM plays WHERE user_id IN (${view.ids.join(',')}) LIMIT 1`);
 	return {
 		view,

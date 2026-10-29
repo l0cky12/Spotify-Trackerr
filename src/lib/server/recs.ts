@@ -1,68 +1,9 @@
-import { createHash } from 'node:crypto';
-import { get, all, cached, run, now, tx, type Row } from './db.js';
+import { get, all, cached, run, now, type Row } from './db.js';
+import { lastfmApp } from './connections.js';
 import { key } from './ingest.js';
-import { lastfm, realPicture, getJson, same, UA } from './enrich.js';
+import { lastfm, realPicture, getJson, same } from './enrich.js';
 
 const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
-
-export const lastfmEnabled = () => !!process.env.LASTFM_API_KEY;
-/** Signing in with Last.fm also needs the shared secret from the same Last.fm app page. */
-export const lastfmLoginEnabled = () => lastfmEnabled() && !!process.env.LASTFM_SHARED_SECRET;
-
-/** Last.fm's api_sig: md5 of every param as name+value, sorted by name, then the shared secret. */
-export const lastfmSig = (params: Record<string, string>, secret: string) =>
-	createHash('md5')
-		.update(Object.keys(params).sort().map((k) => k + params[k]).join('') + secret)
-		.digest('hex');
-
-export const lastfmAuthUrl = (cb: string) => 'https://www.last.fm/api/auth/?' + new URLSearchParams({ api_key: process.env.LASTFM_API_KEY!, cb });
-
-/** Trades the token from Last.fm's sign-in redirect for the Last.fm username it belongs to. */
-export async function lastfmUsername(token: string) {
-	const p = { method: 'auth.getSession', api_key: process.env.LASTFM_API_KEY!, token };
-	const r = await lastfm({ ...p, api_sig: lastfmSig(p, process.env.LASTFM_SHARED_SECRET!) });
-	if (!validName(r.session?.name)) throw new Error('Last.fm returned an invalid username.');
-	return r.session.name as string;
-}
-
-export function setLastfmUser(userId: number, username: string | null) {
-	tx(() => {
-		run('UPDATE users SET lastfm_user = ? WHERE id = ?', username, userId);
-		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
-	});
-}
-
-/** ListenBrainz accounts are MusicBrainz accounts, so signing in goes through a MusicBrainz OAuth app. */
-export const listenbrainzLoginEnabled = () => !!process.env.MUSICBRAINZ_CLIENT_ID && !!process.env.MUSICBRAINZ_CLIENT_SECRET;
-
-export const listenbrainzAuthUrl = (redirect_uri: string, state: string) =>
-	'https://musicbrainz.org/oauth2/authorize?' +
-	new URLSearchParams({ response_type: 'code', client_id: process.env.MUSICBRAINZ_CLIENT_ID!, redirect_uri, scope: 'profile', state, access_type: 'online' });
-
-/** Trades the code from MusicBrainz's sign-in redirect for the username, and checks it has a ListenBrainz account. */
-export async function listenbrainzUsername(code: string, redirect_uri: string) {
-	const mb = async (path: string, init: RequestInit) => {
-		const res = await fetch('https://musicbrainz.org/oauth2/' + path, { ...init, headers: { 'User-Agent': UA, ...init.headers }, signal: AbortSignal.timeout(10_000) });
-		if (!res.ok) throw new Error(`MusicBrainz returned ${res.status}`);
-		return res.json();
-	};
-	const t = await mb('token', {
-		method: 'POST',
-		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: process.env.MUSICBRAINZ_CLIENT_ID!, client_secret: process.env.MUSICBRAINZ_CLIENT_SECRET! })
-	});
-	const me = await mb('userinfo', { headers: { Authorization: `Bearer ${t.access_token}` } });
-	if (!validName(me.sub)) throw new Error('MusicBrainz returned an invalid username.');
-	// 404 here means the MusicBrainz account has never opened ListenBrainz.
-	await getJson(`https://api.listenbrainz.org/1/user/${encodeURIComponent(me.sub)}/listen-count`);
-	return me.sub as string;
-}
-
-export function setListenbrainzUser(userId: number, username: string | null) {
-	tx(() => {
-		run('UPDATE users SET listenbrainz_user = ? WHERE id = ?', username, userId);
-		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
-	});
-}
 
 /** ListenBrainz stats for the last month; empty when it hasn't computed them yet (204). */
 async function listenbrainzTop(user: string, kind: 'artists' | 'recordings') {
@@ -105,7 +46,7 @@ function localize(r: Rec): Rec {
 const WEEK = 7 * 86400;
 
 export async function similarTracks(artist: string, title: string): Promise<Rec[]> {
-	if (!lastfmEnabled()) return [];
+	if (!lastfmApp()) return [];
 	const list = await cached(`lfm:track:${key(artist)}:${key(title)}`, WEEK, async () => {
 		const r = await lastfm({ method: 'track.getsimilar', artist, track: title, autocorrect: '1', limit: '15' });
 		return (r.similartracks?.track ?? []).filter((t: any) => Number(t.match) >= 0.05).map((t: any) => ({ title: t.name, artist: t.artist?.name }));
@@ -114,7 +55,7 @@ export async function similarTracks(artist: string, title: string): Promise<Rec[
 }
 
 export async function similarArtists(artist: string): Promise<Rec[]> {
-	if (!lastfmEnabled()) return [];
+	if (!lastfmApp()) return [];
 	const list = await cached(`lfm:artist:${key(artist)}`, WEEK, async () => {
 		const r = await lastfm({ method: 'artist.getsimilar', artist, autocorrect: '1', limit: '12' });
 		return (r.similarartists?.artist ?? []).map((a: any) => ({ artist: a.name }));

@@ -12,7 +12,7 @@
 	// One section shows at a time, picked by ?section= so it renders on the server and works without JavaScript.
 	// Each form posts to ?section=<id>&/<action> so the same section reopens with its result.
 	const sections = $derived([
-		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || !!data.u.syncError, body: spotifySection },
+		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
@@ -50,17 +50,18 @@
 </div>
 
 {#snippet spotifySection()}
-{#if data.u.linked}
+{#if data.u.needsReconnect}
+	<p><span class="error">Sync stopped: this Spotify link can't be used any more.</span> Sign in again to keep syncing.</p>
+	<a class="button" href="/auth/spotify?mode=link">Reconnect Spotify</a>
+{:else if data.u.linked}
 	<p>
-		{#if data.u.syncError === 'reauth'}
-			<span class="error">Sync stopped: Spotify ended this app's access.</span>
-		{:else if data.u.syncError}
-			<span class="error">Last sync failed: {data.u.syncError}</span>
+		{#if data.u.lastError}
+			<span class="error">Last sync failed: {data.u.lastError}</span>
 		{:else}
 			<span class="ok">Linked.</span> New plays sync every 5 minutes{#if data.u.lastSync}; last checked {formatWhen(data.u.lastSync, data.u.timezone)}{/if}.
 		{/if}
 	</p>
-	{#if data.u.linkExpires}<p class="muted">Spotify ends this link on {formatDate(data.u.linkExpires, data.u.timezone)}, six months after you signed in. Reconnect any time to reset it.</p>{/if}
+	{#if data.u.expiresAt}<p class="muted">Spotify ends this link on {formatDate(data.u.expiresAt, data.u.timezone)}, six months after you signed in. Reconnect any time to reset it.</p>{/if}
 	<div class="row">
 		<a class="button" href="/auth/spotify?mode=link">Reconnect Spotify</a>
 		<form method="POST" action="?section=spotify&/unlink" use:enhance><button class="secondary">Unlink Spotify</button></form>
@@ -181,26 +182,48 @@
 {#snippet lastfmSection()}
 {#if data.u.lastfmUser}
 	<p>
-		<span class="ok">Connected</span> as
+		<span class="ok">Linked</span> as
 		<a href="https://www.last.fm/user/{encodeURIComponent(data.u.lastfmUser)}" target="_blank" rel="noopener">{data.u.lastfmUser}</a>.
 		<a href="/discover">Discover</a> picks new music from your Last.fm top artists and songs of the last month.
 	</p>
-	<form method="POST" action="?section=lastfm&/lastfmUnlink" use:enhance><button class="secondary">Unlink Last.fm</button></form>
+	<div class="row">
+		{#if data.lastfmLogin}<a class="button" href="/auth/lastfm">Reconnect Last.fm</a>{/if}
+		<form method="POST" action="?section=lastfm&/lastfmUnlink" use:enhance><button class="secondary">Unlink Last.fm</button></form>
+	</div>
 	<p class="muted small">Unlinking makes Discover go back to what you've played here.</p>
 {:else if data.lastfmLogin}
 	<p>Sign in with Last.fm so <a href="/discover">Discover</a> picks new music from everything you scrobble, not just what you've played here.</p>
 	<a class="button" href="/auth/lastfm">Sign in with Last.fm</a>
-{:else}
-	<p class="muted">
-		Last.fm sign-in isn't set up on this server yet.
-		{#if data.u.isAdmin}
-			Create a free app at <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a> and add its
-			<code>LASTFM_API_KEY</code> and <code>LASTFM_SHARED_SECRET</code> to the server's <code>.env</code>.
-		{:else}
-			Ask the admin to set it up.
-		{/if}
-	</p>
+{:else if !data.admin}
+	<p class="muted">Last.fm sign-in isn't turned on for this server yet. Ask the admin to turn it on.</p>
+{:else if data.admin.lastfmFromEnv}
+	<p class="muted">This server's Last.fm key is set in its <code>.env</code> file. Add <code>LASTFM_SHARED_SECRET</code> from the same Last.fm app there to turn on sign-in.</p>
 {/if}
+{#if data.admin && !data.admin.lastfmFromEnv}
+	{#if data.lastfmLogin}
+		<details>
+			<summary class="muted small">Change this server's Last.fm app</summary>
+			{@render lastfmAppForm()}
+		</details>
+	{:else}
+		<p>
+			Turn on Last.fm sign-in for everyone on this server. Create a free app at
+			<a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a> (any name; leave the callback URL empty), then paste
+			its API key and shared secret here.
+		</p>
+		{@render lastfmAppForm()}
+	{/if}
+{/if}
+{#if msg('lastfm')?.error}<p class="error">{msg('lastfm')?.error}</p>{/if}
+{/snippet}
+
+{#snippet lastfmAppForm()}
+<form method="POST" action="?section=lastfm&/lastfmApp" use:enhance class="stack">
+	<label>API key <input name="api_key" value={data.admin?.lastfmKey} autocomplete="off" required /></label>
+	<label>Shared secret <input name="shared_secret" type="password" placeholder={data.admin?.lastfmKey ? 'Saved' : ''} autocomplete="off" required /></label>
+	<button>Save and turn on</button>
+	<p class="muted small">The secret is stored encrypted.</p>
+</form>
 {/snippet}
 
 {#snippet listenbrainzSection()}
@@ -217,14 +240,14 @@
 {:else}
 	<p class="muted">
 		ListenBrainz sign-in isn't set up on this server yet.
-		{#if data.u.isAdmin}
+		{#if data.admin}
 			Register an app at <a href="https://musicbrainz.org/account/applications/register" target="_blank" rel="noopener">musicbrainz.org/account/applications</a>
 			(type: web application) with this callback URL, then add its <code>MUSICBRAINZ_CLIENT_ID</code> and <code>MUSICBRAINZ_CLIENT_SECRET</code> to the server's <code>.env</code>.
 		{:else}
 			Ask the admin to set it up.
 		{/if}
 	</p>
-	{#if data.u.isAdmin}<p><code>{data.listenbrainzCallback}</code></p>{/if}
+	{#if data.admin}<p><code>{data.listenbrainzCallback}</code></p>{/if}
 {/if}
 {/snippet}
 
