@@ -7,6 +7,7 @@
 	import Trends from '#lib/components/Trends.svelte';
 	import Cover from '#lib/components/Cover.svelte';
 	import NowPlaying from '#lib/components/NowPlaying.svelte';
+	import Genres from '#lib/components/Genres.svelte';
 	import Decades from './Decades.svelte';
 	import { u, fmt, minutes, withParams } from '#lib/nav.js';
 	import { RANGES } from '#lib/time.js';
@@ -106,10 +107,10 @@
 		<section class="panel">
 			<h2>
 				Genres
-				{#if data.totals.plays}<small>{Math.round((data.genres.covered / data.totals.plays) * 100)}% of plays have genre data</small>{/if}
+				{#if data.totals.plays}<small>Click a genre for its top artist, song and album. {Math.round((data.genres.covered / data.totals.plays) * 100)}% of plays have genre data</small>{/if}
 			</h2>
 			{#if data.genres.rows.length}
-				<BarList items={data.genres.rows.map((g) => ({ ...g, name: g.name }))} {rankBy} covers={false} />
+				<Genres genres={data.genres.rows} {rankBy} />
 			{:else}
 				<p class="muted">Genres appear once artists have been looked up. That runs in the background after an import or sync.</p>
 			{/if}

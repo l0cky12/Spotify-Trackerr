@@ -3,8 +3,14 @@
 	import { fmt, minutes } from '#lib/nav.js';
 
 	type Item = { name: string; sub?: string | null; href?: string; subHref?: string; image?: string | null; plays: number; ms: number };
-	let { items, rankBy = 'plays', round = false, start = 0, covers = true }: { items: Item[]; rankBy?: string; round?: boolean; start?: number; covers?: boolean } =
-		$props();
+	let {
+		items,
+		rankBy = 'plays',
+		round = false,
+		start = 0,
+		covers = true,
+		onselect
+	}: { items: Item[]; rankBy?: string; round?: boolean; start?: number; covers?: boolean; onselect?: (item: Item) => void } = $props();
 
 	const val = (i: Item) => (rankBy === 'minutes' ? minutes(i.ms) : i.plays);
 	const max = $derived(Math.max(1, ...items.map(val)));
@@ -16,7 +22,7 @@
 			<span class="rank">{start + i + 1}</span>
 			{#if covers}<Cover src={item.image} alt={item.name} size={36} {round} />{/if}
 			<span class="text">
-				{#if item.href}<a href={item.href}>{item.name}</a>{:else}{item.name}{/if}
+				{#if item.href}<a href={item.href}>{item.name}</a>{:else if onselect}<button class="pick" onclick={() => onselect(item)}>{item.name}</button>{:else}{item.name}{/if}
 				{#if item.sub}<small>{#if item.subHref}<a href={item.subHref}>{item.sub}</a>{:else}{item.sub}{/if}</small>{/if}
 				<span class="track"><span class="bar" style:width="{(val(item) / max) * 100}%"></span></span>
 			</span>
@@ -59,6 +65,7 @@
 		gap: 2px;
 	}
 	.text > a,
+	.text > .pick,
 	.text small {
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -68,6 +75,17 @@
 	.value small {
 		color: var(--ink-2);
 		font-size: 0.78rem;
+	}
+	.pick {
+		all: unset;
+		cursor: pointer;
+	}
+	.pick:hover {
+		text-decoration: underline;
+	}
+	.pick:focus-visible {
+		outline: 2px solid var(--series-1);
+		outline-offset: 2px;
 	}
 	.track {
 		height: 6px;
