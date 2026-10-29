@@ -6,7 +6,7 @@
 	const spotify = $derived(data.row.spotify_id ? `https://open.spotify.com/track/${data.row.spotify_id}` : null);
 </script>
 
-<EntityHead kind="track" id={data.id} title={data.row.name} image={data.image} totals={data.totals} monthly={data.monthly} tz={data.view.tz} readonly={data.view.readonly} {form}>
+<EntityHead kind="track" id={data.id} title={data.row.name} image={data.image} totals={data.totals} monthly={data.monthly} tz={data.view.tz} readonly={data.view.readonly} bannedBy={data.bannedBy} {form}>
 	<p class="by">
 		<a href={u(`/artist/${data.artist.id}`)}>{data.artist.name}</a>{#if data.album}, from <a href={u(`/album/${data.album.id}`)}>{data.album.name}</a>{/if}
 	</p>

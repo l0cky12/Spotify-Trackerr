@@ -18,6 +18,7 @@
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
+		{ id: 'bans', group: 'Your data', title: 'Banned', alert: false, body: bansSection },
 		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
 		{ id: 'password', group: 'Profile', title: data.u.hasPassword ? 'Username and password' : 'Add a username and password', alert: false, body: passwordSection },
 		{ id: 'account', group: 'Profile', title: 'Account', alert: false, body: accountSection },
@@ -123,6 +124,34 @@
 			{/each}
 		</tbody>
 	</table>
+{/if}
+{/snippet}
+
+{#snippet bansSection()}
+<p>
+	Songs, albums and artists you banned don't show up anywhere in the app, and their plays are left out of your stats. The plays aren't deleted:
+	unban something and it comes back everywhere. To ban something, open its page and choose <strong>Ban</strong>.
+</p>
+{#if msg('bans')?.error}<p class="error">{msg('bans')?.error}</p>{/if}
+{#if data.bans.length}
+	<ul class="bans">
+		{#each data.bans as b (b.kind + b.id)}
+			<li>
+				<Cover src={b.image} alt={b.name} size={44} round={b.kind === 'artist'} />
+				<div class="ban-name">
+					<a href="/{b.kind}/{b.id}">{b.name}</a>
+					<small class="muted">{{ track: 'Song', album: 'Album', artist: 'Artist' }[b.kind]}{b.artist ? ` by ${b.artist}` : ''} · banned {formatDate(b.created_at, data.u.timezone)}</small>
+				</div>
+				<form method="POST" action="?section=bans&/unban" use:enhance>
+					<input type="hidden" name="kind" value={b.kind} />
+					<input type="hidden" name="id" value={b.id} />
+					<button class="secondary small-btn">Unban</button>
+				</form>
+			</li>
+		{/each}
+	</ul>
+{:else}
+	<p class="muted">Nothing banned yet.</p>
 {/if}
 {/snippet}
 
@@ -429,6 +458,24 @@
 	th {
 		padding: 5px 10px 5px 0;
 		border-bottom: 1px solid var(--grid);
+	}
+	.bans {
+		list-style: none;
+		padding: 0;
+		margin: 12px 0 0;
+		display: grid;
+	}
+	.bans li {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+		padding: 8px 0;
+		border-bottom: 1px solid var(--grid);
+	}
+	.ban-name {
+		display: grid;
+		flex: 1;
+		min-width: 0;
 	}
 	.small-btn {
 		padding: 3px 9px;

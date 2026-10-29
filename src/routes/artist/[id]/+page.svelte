@@ -10,7 +10,7 @@
 	const spotify = $derived(data.row.spotify_id ? `https://open.spotify.com/artist/${data.row.spotify_id}` : `https://open.spotify.com/search/${encodeURIComponent(data.row.name)}`);
 </script>
 
-<EntityHead kind="artist" id={data.id} title={data.row.name} image={data.image} round totals={data.totals} monthly={data.monthly} tz={data.view.tz} readonly={data.view.readonly} {form}>
+<EntityHead kind="artist" id={data.id} title={data.row.name} image={data.image} round totals={data.totals} monthly={data.monthly} tz={data.view.tz} readonly={data.view.readonly} bannedBy={data.bannedBy} {form}>
 	{#if data.genres.length}<p class="genres">{data.genres.join(', ')}</p>{/if}
 	<p><a class="button" href={spotify} target="_blank" rel="noopener">Open in Spotify</a></p>
 </EntityHead>

@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { all } from '#lib/server/db.js';
-import { entityPage, setImage } from '#lib/server/entity.js';
+import { entityPage, setBan, setImage } from '#lib/server/entity.js';
+import { bannedIds, recBanned } from '#lib/server/bans.js';
 import { top } from '#lib/server/stats.js';
 import { similarArtists, spotifySearchUrl } from '#lib/server/recs.js';
 import { lastfmApp } from '#lib/server/connections.js';
@@ -16,8 +17,11 @@ export const load: PageServerLoad = (event) => {
 		tracks: top('track', scope, 15, 0, filter),
 		albums: top('album', scope, 12, 0, filter),
 		lastfm: !!lastfmApp(),
-		similar: similarArtists(e.row.name).then((l) => l.map((r) => ({ ...r, url: r.artistId ? '' : spotifySearchUrl(r) })))
+		similar: similarArtists(e.row.name).then((l) => {
+			const banned = bannedIds(event.locals.user!.id);
+			return l.filter((r) => !recBanned(banned, r)).map((r) => ({ ...r, url: r.artistId ? '' : spotifySearchUrl(r) }));
+		})
 	};
 };
 
-export const actions = { image: (e) => setImage(e, 'artist') } satisfies Actions;
+export const actions = { image: (e) => setImage(e, 'artist'), ban: (e) => setBan(e, 'artist', true), unban: (e) => setBan(e, 'artist', false) } satisfies Actions;

@@ -15,6 +15,7 @@
 		monthly,
 		tz,
 		readonly,
+		bannedBy = null,
 		form,
 		children
 	}: {
@@ -27,19 +28,47 @@
 		monthly: { months: { y: number; m: number; label: string; plays: number }[]; peak: { y: number; m: number; plays: number } | null; peakYear: { year: number; plays: number } | null };
 		tz: string;
 		readonly: boolean;
+		/** The viewer's ban hiding this page's plays: on the item itself, or on its album or artist. */
+		bannedBy?: { kind: 'track' | 'album' | 'artist'; id: number; name: string } | null;
 		form: any;
 		children?: Snippet;
 	} = $props();
 
+	const NOUN = { track: 'song', album: 'album', artist: 'artist' };
 	const month = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, '0')}`;
 	const peakIndex = $derived(monthly.peak ? monthly.months.findIndex((m) => m.y === monthly.peak!.y && m.m === monthly.peak!.m) : -1);
 </script>
+
+{#if bannedBy}
+	<section class="banned" role="status">
+		<p>
+			{#if bannedBy.kind === kind}
+				<strong>You banned this {NOUN[kind]}.</strong> Your plays of it are left out of your stats, lists, charts, history and search.
+			{:else}
+				<strong>Hidden by a ban.</strong> You banned the {NOUN[bannedBy.kind]}
+				<a href={u(`/${bannedBy.kind}/${bannedBy.id}`)}>{bannedBy.name}</a>, so plays of this {NOUN[kind]} are left out of your stats too.
+			{/if}
+		</p>
+		<form method="POST" action="?/unban">
+			<input type="hidden" name="kind" value={bannedBy.kind} />
+			<input type="hidden" name="id" value={bannedBy.id} />
+			<button>Unban {bannedBy.kind === kind ? `this ${NOUN[kind]}` : bannedBy.name}</button>
+		</form>
+	</section>
+{/if}
 
 <section class="head">
 	<Cover src={image} alt={title} size={220} {round} />
 	<div class="info">
 		<h1>{title}</h1>
 		{@render children?.()}
+		{#if !readonly && !bannedBy}
+			<form class="ban" method="POST" action="?/ban">
+				<button class="secondary" title="Hide this {NOUN[kind]} everywhere and leave its plays out of your stats. You can unban it any time.">Ban {NOUN[kind]}</button>
+				<span class="muted">Hides it everywhere and removes it from your stats.</span>
+			</form>
+		{/if}
+		{#if form?.banError}<p class="error">{form.banError}</p>{/if}
 		<dl>
 			<div><dt>Plays</dt><dd>{fmt(totals.plays)}</dd></div>
 			<div><dt>{timeUnitTitle()}</dt><dd>{listened(totals.ms)}</dd></div>
@@ -51,6 +80,8 @@
 				First played {formatWhen(totals.first, tz)}, last played {formatWhen(totals.last!, tz)}.
 				<a href={u(`/history?${kind}=${id}&range=all`)}>See every play</a>
 			</p>
+		{:else if bannedBy}
+			<p class="muted">Plays are hidden while it's banned.</p>
 		{:else}
 			<p class="muted">No plays yet.</p>
 		{/if}
@@ -135,6 +166,29 @@
 	}
 	.panel {
 		margin-bottom: 20px;
+	}
+	.banned {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px 20px;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 20px;
+		padding: 14px 18px;
+		border-radius: 12px;
+		background: var(--surface-2);
+		border-left: 4px solid var(--critical);
+	}
+	.banned p {
+		margin: 0;
+		flex: 1 1 320px;
+	}
+	.ban {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+		flex-wrap: wrap;
+		font-size: 0.85rem;
 	}
 	.img {
 		margin-bottom: 20px;

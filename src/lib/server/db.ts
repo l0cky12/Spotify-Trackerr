@@ -139,6 +139,15 @@ CREATE TABLE IF NOT EXISTS playlist_templates (
 	created_at INTEGER NOT NULL,
 	last_playlist_url TEXT
 );
+
+-- Songs, albums and artists a person banned: their plays of these drop out of every page. See bans.ts.
+CREATE TABLE IF NOT EXISTS bans (
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	kind TEXT NOT NULL CHECK (kind IN ('track', 'album', 'artist')),
+	item_id INTEGER NOT NULL,
+	created_at INTEGER NOT NULL,
+	PRIMARY KEY (user_id, kind, item_id)
+);
 `);
 
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to an existing database.

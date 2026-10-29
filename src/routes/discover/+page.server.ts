@@ -3,17 +3,27 @@ import type { Actions, PageServerLoad } from './$types';
 import { buildDiscover, savedDiscover, spotifySearchUrl, type Rec } from '#lib/server/recs.js';
 import { lastfmApp } from '#lib/server/connections.js';
 import { get } from '#lib/server/db.js';
+import { bannedIds, bannedKeys, recBanned, type Banned } from '#lib/server/bans.js';
 
-const withUrl = (l: Rec[]) => l.map((r) => ({ ...r, url: spotifySearchUrl(r) }));
+// Saved picks are filtered as they're shown, so a ban made since the last refresh still takes them out.
+const withUrl = (l: Rec[], banned: Banned) => l.filter((r) => !recBanned(banned, r)).map((r) => ({ ...r, url: spotifySearchUrl(r) }));
 
 export const load: PageServerLoad = ({ locals }) => {
 	const saved = savedDiscover(locals.user!.id);
+	const banned = bannedIds(locals.user!.id);
+	const bannedArtist = bannedKeys(locals.user!.id).artist;
 	return {
 		enabled: !!lastfmApp(),
 		lastfmUser: locals.user!.lastfm_user as string | null,
 		listenbrainzUser: locals.user!.listenbrainz_user as string | null,
 		checking: get('SELECT COUNT(*) n FROM tracks WHERE credits_done = 0 AND spotify_id IS NOT NULL')!.n as number,
-		picks: saved && { ...saved, artists: withUrl(saved.artists), albums: withUrl(saved.albums), songs: withUrl(saved.songs) }
+		picks: saved && {
+			...saved,
+			seeds: saved.seeds.filter((s) => !bannedArtist(s)),
+			artists: withUrl(saved.artists, banned),
+			albums: withUrl(saved.albums, banned),
+			songs: withUrl(saved.songs, banned)
+		}
 	};
 };
 

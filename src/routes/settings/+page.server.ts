@@ -21,6 +21,7 @@ import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
 import { storeUpload } from '#lib/server/entity.js';
 import { top } from '#lib/server/stats.js';
+import { bansOf, unban, BAN_KINDS, type BanKind } from '#lib/server/bans.js';
 import { TIME_UNITS } from '#lib/time.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
@@ -48,6 +49,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		listenbrainzCallback: `${url.origin}/auth/listenbrainz/callback`,
 		callback: `${url.origin}/auth/spotify/callback`,
 		imports: all('SELECT * FROM imports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', u.id),
+		bans: bansOf(u.id),
 		pending: get('SELECT COUNT(*) n FROM tracks WHERE enriched != 1')!.n as number,
 		timezones: Intl.supportedValuesOf('timeZone'),
 		error: url.searchParams.get('error'),
@@ -97,6 +99,13 @@ export const actions = {
 		}
 		run('UPDATE users SET avatar = ? WHERE id = ?', value, locals.user!.id);
 		return { section: 'prefs', saved: true };
+	},
+	unban: async ({ request, locals }) => {
+		const f = await request.formData();
+		const kind = String(f.get('kind')) as BanKind;
+		if (!BAN_KINDS.includes(kind)) return fail(400, { section: 'bans', error: 'Nothing to unban.' });
+		unban(locals.user!.id, kind, Number(f.get('id')));
+		return { section: 'bans', saved: true };
 	},
 	password: async ({ request, locals }) => {
 		const f = await request.formData();
