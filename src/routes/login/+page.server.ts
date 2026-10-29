@@ -2,11 +2,11 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { get } from '#lib/server/db.js';
 import { checkPassword, createUser, loginBlocked, loginFailed, loginSucceeded, signupOpen, startSession, userCount, validUsername } from '#lib/server/auth.js';
-import { serverAppConfigured } from '#lib/server/spotify.js';
+import { spotifyServerAppConfigured } from '#lib/server/connections.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) redirect(303, '/');
-	return { signupOpen: signupOpen(), firstUser: userCount() === 0, spotify: serverAppConfigured(), error: url.searchParams.get('error') };
+	return { signupOpen: signupOpen(), firstUser: userCount() === 0, spotify: spotifyServerAppConfigured(), error: url.searchParams.get('error') };
 };
 
 export const actions = {

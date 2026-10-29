@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { lastfmUsername, setLastfmUser } from '#lib/server/recs.js';
+import { lastfmUsername, setLastfmUser } from '#lib/server/connections.js';
 
 export async function GET({ url, cookies, locals }) {
 	const back = (msg: string) => redirect(303, `/settings?section=lastfm&error=${encodeURIComponent(msg)}`);

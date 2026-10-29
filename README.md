@@ -70,5 +70,6 @@ npm test
 npm run check
 ```
 
-Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default). Secrets pasted into Settings
-are encrypted with `$DATA_DIR/secret.key`; back it up with the database, or they have to be entered again.
+Data lives in SQLite at `$DATA_DIR/trackerr.db` (`./data` by default). Spotify tokens and secrets pasted
+into Settings are encrypted with `$DATA_DIR/secret.key`; back it up with the database, or everyone has to reconnect
+Spotify and enter their own app (and the admin the Last.fm app) again.

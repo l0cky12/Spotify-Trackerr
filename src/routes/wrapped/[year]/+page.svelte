@@ -36,7 +36,7 @@
 		<div><dt>plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
 		<div><dt>artists</dt><dd>{fmt(data.totals.artists)}</dd></div>
 		<div><dt>songs</dt><dd>{fmt(data.totals.tracks)}</dd></div>
-		<div><dt>artists new to you</dt><dd>{fmt(data.newArtists)}</dd></div>
+		<div><dt>artists new to you</dt><dd>{fmt(data.newArtistCount)}</dd></div>
 	</dl>
 
 	<section class="tops">
@@ -58,10 +58,22 @@
 		<section class="panel"><h2>Top 5 artists</h2><BarList items={list(data.artists, 'artist')} {rankBy} round /></section>
 	</div>
 
+	{#if data.newArtists.length}
+		<section class="panel">
+			<h2>New to you in {data.year} <small>Artists you first played this year</small></h2>
+			<BarList items={list(data.newArtists, 'artist')} {rankBy} round />
+		</section>
+	{/if}
+
 	<section class="panel">
 		<h2>
 			Every day of {data.year}
-			{#if data.bestDay}<small>Biggest day: {monthName(data.bestDay.month)} {data.bestDay.day}, with {fmt(data.bestDay.plays)} plays</small>{/if}
+			{#if data.bestDay && data.quietestDay}
+				<small>
+					Biggest day: {monthName(data.bestDay.month)} {data.bestDay.day}, with {fmt(data.bestDay.plays)} plays ·
+					Quietest day: {monthName(data.quietestDay.month)} {data.quietestDay.day}, with {fmt(data.quietestDay.plays)} {data.quietestDay.plays === 1 ? 'play' : 'plays'}
+				</small>
+			{/if}
 		</h2>
 		<Calendar year={data.year} days={data.days} />
 	</section>

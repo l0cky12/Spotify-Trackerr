@@ -1,13 +1,14 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { buildDiscover, savedDiscover, lastfmEnabled, spotifySearchUrl, type Rec } from '#lib/server/recs.js';
+import { buildDiscover, savedDiscover, spotifySearchUrl, type Rec } from '#lib/server/recs.js';
+import { lastfmApp } from '#lib/server/connections.js';
 
 const withUrl = (l: Rec[]) => l.map((r) => ({ ...r, url: spotifySearchUrl(r) }));
 
 export const load: PageServerLoad = ({ locals }) => {
 	const saved = savedDiscover(locals.user!.id);
 	return {
-		enabled: lastfmEnabled(),
+		enabled: !!lastfmApp(),
 		lastfmUser: locals.user!.lastfm_user as string | null,
 		picks: saved && { ...saved, artists: withUrl(saved.artists), albums: withUrl(saved.albums), songs: withUrl(saved.songs) }
 	};
@@ -15,7 +16,7 @@ export const load: PageServerLoad = ({ locals }) => {
 
 export const actions = {
 	refresh: async ({ locals }) => {
-		if (!lastfmEnabled()) return fail(400, { error: 'Discover needs Last.fm turned on for this server.' });
+		if (!lastfmApp()) return fail(400, { error: 'Discover needs Last.fm turned on for this server.' });
 		try {
 			const r = await buildDiscover(locals.user!);
 			if (!r.artists.length && !r.songs.length) return fail(502, { error: "Last.fm didn't return any new music for your top artists. Try again later." });

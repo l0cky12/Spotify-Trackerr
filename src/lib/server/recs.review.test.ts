@@ -15,6 +15,7 @@ old.close();
 const db = await import('./db.js');
 const legacyAfterMigration = db.get('SELECT listenbrainz_token, lastfm_user FROM users WHERE id = 999');
 const recs = await import('./recs.js');
+const connections = await import('./connections.js');
 const start = await import('../../routes/auth/lastfm/+server.js');
 const callback = await import('../../routes/auth/lastfm/callback/+server.js');
 const settings = await import('../../routes/settings/+page.server.js');
@@ -133,7 +134,7 @@ test('preserves existing picks when Last.fm cannot verify listening history', as
 test('a refresh already in flight cannot restore picks after unlink', async () => {
   const snapshot = user();
   fakeFetch((u) => {
-    if (u.searchParams.get('method') === 'track.getInfo') recs.setLastfmUser(1, null);
+    if (u.searchParams.get('method') === 'track.getInfo') connections.setLastfmUser(1, null);
     return defaults(u);
   });
   await finish(recs.buildDiscover(snapshot));
