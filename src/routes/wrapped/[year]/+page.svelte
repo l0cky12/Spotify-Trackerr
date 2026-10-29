@@ -68,7 +68,12 @@
 	<section class="panel">
 		<h2>
 			Every day of {data.year}
-			{#if data.bestDay}<small>Biggest day: {monthName(data.bestDay.month)} {data.bestDay.day}, with {fmt(data.bestDay.plays)} plays</small>{/if}
+			{#if data.bestDay && data.quietestDay}
+				<small>
+					Biggest day: {monthName(data.bestDay.month)} {data.bestDay.day}, with {fmt(data.bestDay.plays)} plays ·
+					Quietest day: {monthName(data.quietestDay.month)} {data.quietestDay.day}, with {fmt(data.quietestDay.plays)} {data.quietestDay.plays === 1 ? 'play' : 'plays'}
+				</small>
+			{/if}
 		</h2>
 		<Calendar year={data.year} days={data.days} />
 	</section>
