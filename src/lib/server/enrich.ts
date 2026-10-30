@@ -23,9 +23,12 @@ export async function getJson(url: string) {
 	// ponytail: one queue per provider in this process; use a shared limiter if the app gains multiple workers.
 	const queue = queues.get(host) ?? { pending: Promise.resolve(), next: 0 };
 	queues.set(host, queue);
-	const result = queue.pending.then(async () => {
-		await new Promise((resolve) => setTimeout(resolve, Math.max(0, queue.next - Date.now())));
+	const slot = queue.pending.then(async () => {
+		// A rate limit reported while waiting pushes queue.next back, so look again after waking.
+		while (Date.now() < queue.next) await new Promise((resolve) => setTimeout(resolve, queue.next - Date.now()));
 		queue.next = Date.now() + gap;
+	});
+	const result = slot.then(async () => {
 		try {
 			return await request();
 		} catch (e) {
@@ -38,7 +41,9 @@ export async function getJson(url: string) {
 			throw e;
 		}
 	});
-	queue.pending = result.then(() => {}, () => {});
+	// Last.fm's next request starts on pace without waiting for this answer: still one every `gap`, but a slow
+	// answer no longer stretches the gap. Deezer waits for each answer, so a rate limit pauses the next one.
+	queue.pending = host === 'ws.audioscrobbler.com' ? slot : result.then(() => {}, () => {});
 	return result;
 }
 
