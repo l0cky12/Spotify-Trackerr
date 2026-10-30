@@ -93,6 +93,9 @@ async function deezerImage(r: Rec): Promise<string | null> {
 	}).catch(() => null);
 }
 
+/** Fills in cover art for picks our library has no picture for. */
+export const withCovers = <T extends Rec>(list: T[]): Promise<T[]> => Promise.all(list.map(async (r) => (r.image ? r : { ...r, image: await deezerImage(r) })));
+
 const AI_LIST = 'https://raw.githubusercontent.com/xoundbyte/soul-over-ai/main/dist/artists.json';
 
 /** Artists Soul Over AI lists as making AI music, fetched daily; the last good copy when GitHub can't be reached. */

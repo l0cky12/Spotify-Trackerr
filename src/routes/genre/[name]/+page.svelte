@@ -1,5 +1,6 @@
 <script lang="ts">
 	import BarList from '#lib/components/BarList.svelte';
+	import CoverGrid from '#lib/components/CoverGrid.svelte';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import Sleeves from '#lib/components/Sleeves.svelte';
 	import { u, fmt, listened } from '#lib/nav.js';
@@ -33,9 +34,9 @@
 	</dl>
 
 	<div class="grid3">
-		<section class="panel"><h2>Top 10 songs</h2><BarList items={list(data.tracks, 'track')} {rankBy} /></section>
-		<section class="panel"><h2>Top 10 albums</h2><BarList items={list(data.albums, 'album')} {rankBy} /></section>
-		<section class="panel"><h2>Top 10 artists</h2><BarList items={list(data.artists, 'artist')} {rankBy} round /></section>
+		<section class="panel"><h2>Top 10 songs</h2><CoverGrid items={list(data.tracks, 'track')} sort={rankBy} min={100} /></section>
+		<section class="panel"><h2>Top 10 albums</h2><CoverGrid items={list(data.albums, 'album')} sort={rankBy} min={100} /></section>
+		<section class="panel"><h2>Top 10 artists</h2><CoverGrid items={list(data.artists, 'artist')} sort={rankBy} round min={100} /></section>
 	</div>
 {/if}
 

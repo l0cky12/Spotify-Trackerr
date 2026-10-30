@@ -5,7 +5,8 @@
 
 	// Image-grid view of a top list: big artwork, name, and the figure the list is sorted by.
 	type Item = { name: string; sub?: string | null; href?: string; image?: string | null; plays: number; ms: number; first?: number; last?: number };
-	let { items, sort = 'plays', round = false, start = 0, tz = 'UTC' }: { items: Item[]; sort?: string; round?: boolean; start?: number; tz?: string } = $props();
+	// `min` is the narrowest a tile gets; narrow panels pass a smaller one so they still fit a few across.
+	let { items, sort = 'plays', round = false, start = 0, tz = 'UTC', min = 150 }: { items: Item[]; sort?: string; round?: boolean; start?: number; tz?: string; min?: number } = $props();
 	const figure = (i: Item) =>
 		sort === 'minutes' ? listened(i.ms)
 		: sort === 'last' && i.last ? `last ${formatDate(i.last, tz)}`
@@ -13,7 +14,7 @@
 		: `${fmt(i.plays)} plays`;
 </script>
 
-<ol class="grid" {start}>
+<ol class="grid" {start} style:--min="{min}px">
 	{#each items as item, i (item.href ?? i)}
 		<li>
 			<a href={item.href} title="{item.name}: {fmt(item.plays)} plays, {listened(item.ms)}">
@@ -34,7 +35,7 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(var(--min), 1fr));
 		gap: 16px 12px;
 	}
 	a {

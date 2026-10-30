@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Cover from '#lib/components/Cover.svelte';
 	import BarList from '#lib/components/BarList.svelte';
+	import CoverGrid from '#lib/components/CoverGrid.svelte';
 	import Columns from '#lib/components/Columns.svelte';
 	import Calendar from '#lib/components/Calendar.svelte';
 	import { u, fmt, listened } from '#lib/nav.js';
@@ -53,15 +54,15 @@
 	</section>
 
 	<div class="grid3">
-		<section class="panel"><h2>Top 5 songs</h2><BarList items={list(data.tracks, 'track')} {rankBy} /></section>
-		<section class="panel"><h2>Top 5 albums</h2><BarList items={list(data.albums, 'album')} {rankBy} /></section>
-		<section class="panel"><h2>Top 5 artists</h2><BarList items={list(data.artists, 'artist')} {rankBy} round /></section>
+		<section class="panel"><h2>Top 5 songs</h2><CoverGrid items={list(data.tracks, 'track')} sort={rankBy} min={100} /></section>
+		<section class="panel"><h2>Top 5 albums</h2><CoverGrid items={list(data.albums, 'album')} sort={rankBy} min={100} /></section>
+		<section class="panel"><h2>Top 5 artists</h2><CoverGrid items={list(data.artists, 'artist')} sort={rankBy} round min={100} /></section>
 	</div>
 
 	{#if data.newArtists.length}
 		<section class="panel">
 			<h2>New to you in {data.year} <small>Artists you first played this year</small></h2>
-			<BarList items={list(data.newArtists, 'artist')} {rankBy} round />
+			<CoverGrid items={list(data.newArtists, 'artist')} sort={rankBy} round />
 		</section>
 	{/if}
 

@@ -1,25 +1,28 @@
 <script lang="ts">
+	import Cover from './Cover.svelte';
 	import { u } from '#lib/nav.js';
-	type Rec = { title?: string; artist: string; trackId?: number | null; artistId?: number | null; url: string };
+	type Rec = { title?: string; artist: string; image?: string | null; trackId?: number | null; artistId?: number | null; url: string };
 	let { recs, artistsOnly = false }: { recs: Rec[]; artistsOnly?: boolean } = $props();
+	// Picks already in the library open our own page, with Spotify a link underneath; the rest open Spotify.
+	const local = (r: Rec) => (artistsOnly ? (r.artistId ? `/artist/${r.artistId}` : null) : r.trackId ? `/track/${r.trackId}` : null);
+	const name = (r: Rec) => (artistsOnly ? r.artist : r.title!);
 </script>
 
 <ul class="recs">
 	{#each recs as r, i (i)}
-		<li>
-			{#if artistsOnly}
-				{#if r.artistId}<a href={u(`/artist/${r.artistId}`)}>{r.artist}</a> <span class="heard">in your library</span>{:else}{r.artist}{/if}
-			{:else}
-				<span>
-					{#if r.trackId}<a href={u(`/track/${r.trackId}`)}>{r.title}</a>{:else}{r.title}{/if}
-					<small>{#if r.artistId}<a href={u(`/artist/${r.artistId}`)}>{r.artist}</a>{:else}{r.artist}{/if}</small>
-				</span>
-				{#if r.trackId}<span class="heard">played before</span>{/if}
+		{@const href = local(r)}
+		<li class:round={artistsOnly}>
+			<a href={href ? u(href) : r.url} target={href ? undefined : '_blank'} rel={href ? undefined : 'noopener'} title={name(r)}>
+				<Cover src={r.image} alt={name(r)} size={160} round={artistsOnly} />
+				<strong>{name(r)}</strong>
+			</a>
+			{#if !artistsOnly}<small>{#if r.artistId}<a href={u(`/artist/${r.artistId}`)}>{r.artist}</a>{:else}{r.artist}{/if}</small>{/if}
+			{#if href}
+				<span class="heard">{artistsOnly ? 'in your library' : 'played before'} · <a href={r.url} target="_blank" rel="noopener">Spotify</a></span>
 			{/if}
-			<a class="sp" href={r.url} target="_blank" rel="noopener">Open in Spotify</a>
 		</li>
 	{:else}
-		<li class="muted">No suggestions found.</li>
+		<li class="muted empty">No suggestions found.</li>
 	{/each}
 </ul>
 
@@ -29,30 +32,51 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: 8px;
+		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+		gap: 16px 12px;
 	}
 	li {
-		display: flex;
-		gap: 10px;
-		align-items: baseline;
-		justify-content: space-between;
-	}
-	li > span {
 		display: grid;
+		gap: 2px;
+		align-content: start;
 		min-width: 0;
-		flex: 1;
+	}
+	li > a {
+		display: grid;
+		gap: 2px;
+		text-decoration: none;
+	}
+	li > a :global(.cover) {
+		width: 100%;
+		height: auto;
+		aspect-ratio: 1;
+		margin-bottom: 6px;
+	}
+	a:hover strong {
+		text-decoration: underline;
+	}
+	strong,
+	small,
+	.heard {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	small {
 		color: var(--ink-2);
+		font-size: 0.8rem;
 	}
 	.heard {
 		font-size: 0.75rem;
 		color: var(--muted);
-		white-space: nowrap;
 	}
-	.sp {
-		font-size: 0.8rem;
+	.heard a {
 		color: var(--ink-2);
-		white-space: nowrap;
+	}
+	.round {
+		text-align: center;
+	}
+	.empty {
+		grid-column: 1 / -1;
 	}
 </style>
