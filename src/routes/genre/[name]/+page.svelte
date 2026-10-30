@@ -2,7 +2,7 @@
 	import BarList from '#lib/components/BarList.svelte';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import Sleeves from '#lib/components/Sleeves.svelte';
-	import { u, fmt, listened, timeUnitTitle } from '#lib/nav.js';
+	import { u, fmt, listened } from '#lib/nav.js';
 	import { RANGES } from '#lib/time.js';
 
 	let { data } = $props();
@@ -27,7 +27,7 @@
 
 	<dl class="totals">
 		<div><dt>Plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
-		<div><dt>{timeUnitTitle()}</dt><dd>{listened(data.totals.ms)}</dd></div>
+		<div><dt>Time listened</dt><dd>{listened(data.totals.ms)}</dd></div>
 		<div><dt>Artists</dt><dd>{fmt(data.totals.artists)}</dd></div>
 		<div><dt>Songs</dt><dd>{fmt(data.totals.tracks)}</dd></div>
 	</dl>

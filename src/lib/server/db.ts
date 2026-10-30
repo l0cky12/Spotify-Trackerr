@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
 	is_admin INTEGER NOT NULL DEFAULT 0,
 	timezone TEXT NOT NULL DEFAULT 'UTC',
 	rank_by TEXT NOT NULL DEFAULT 'plays' CHECK (rank_by IN ('plays', 'minutes')),
-	time_unit TEXT NOT NULL DEFAULT 'minutes',
+	time_unit TEXT NOT NULL DEFAULT 'auto',
 	public INTEGER NOT NULL DEFAULT 0,
 	spotify_id TEXT UNIQUE,
 	spotify_access TEXT,
@@ -154,7 +154,11 @@ CREATE TABLE IF NOT EXISTS bans (
 export const userColumns = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
 if (!userColumns.includes('lastfm_user')) db.exec('ALTER TABLE users ADD COLUMN lastfm_user TEXT');
 if (!userColumns.includes('listenbrainz_user')) db.exec('ALTER TABLE users ADD COLUMN listenbrainz_user TEXT');
-if (!userColumns.includes('time_unit')) db.exec("ALTER TABLE users ADD COLUMN time_unit TEXT NOT NULL DEFAULT 'minutes'");
+if (!userColumns.includes('time_unit')) db.exec("ALTER TABLE users ADD COLUMN time_unit TEXT NOT NULL DEFAULT 'auto'");
+// Auto became the default time unit; move everyone onto it once (they can pick a fixed unit again in Settings).
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'time_unit_auto'").get()) {
+	db.exec("UPDATE users SET time_unit = 'auto'; INSERT INTO settings (key, value) VALUES ('time_unit_auto', '1')");
+}
 // Profile picture: an /img/ upload or one of the person's top-artist pictures (see settings).
 if (!userColumns.includes('avatar')) db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');

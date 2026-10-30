@@ -1,5 +1,5 @@
 import { page } from '$app/state';
-import { TIME_UNITS, type TimeUnit } from './time.js';
+import { formatListened, type TimeUnit } from './time.js';
 
 /** Keeps `?user=` on internal links so browsing someone else's stats stays on their stats. */
 export function u(href: string) {
@@ -22,8 +22,6 @@ export const fmt = (n: number) => n.toLocaleString('en-US');
 export const compact = (n: number) => Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 
 /** The viewer's chosen unit for time listened, from Settings. */
-export const timeUnit = (): TimeUnit => page.data.me?.timeUnit ?? 'minutes';
-export const timeUnitTitle = () => timeUnit()[0].toUpperCase() + timeUnit().slice(1);
-/** Time listened in the viewer's unit, formatted; minutes are whole, the rest keep one decimal. */
-export const listened = (ms: number) =>
-	(ms / TIME_UNITS[timeUnit()]).toLocaleString('en-US', { maximumFractionDigits: timeUnit() === 'minutes' ? 0 : 1 });
+export const timeUnit = (): TimeUnit => page.data.me?.timeUnit ?? 'auto';
+/** Time listened in the viewer's unit, with the unit: '47 min', '3.2 days'. */
+export const listened = (ms: number) => formatListened(ms, timeUnit());

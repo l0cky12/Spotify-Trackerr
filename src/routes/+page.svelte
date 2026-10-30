@@ -9,7 +9,7 @@
 	import NowPlaying from '#lib/components/NowPlaying.svelte';
 	import Sleeves from '#lib/components/Sleeves.svelte';
 	import Decades from './Decades.svelte';
-	import { u, fmt, listened, timeUnitTitle, timeUnit, withParams } from '#lib/nav.js';
+	import { u, fmt, listened, withParams } from '#lib/nav.js';
 	import { RANGES } from '#lib/time.js';
 
 	let { data } = $props();
@@ -52,7 +52,7 @@
 
 	<dl class="totals">
 		<div><dt>Plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
-		<div><dt>{timeUnitTitle()}</dt><dd>{listened(data.totals.ms)}</dd></div>
+		<div><dt>Time listened</dt><dd>{listened(data.totals.ms)}</dd></div>
 		<div><dt>Artists</dt><dd>{fmt(data.totals.artists)}</dd></div>
 		<div><dt>Albums</dt><dd>{fmt(data.albumsCount)}</dd></div>
 		<div><dt>Songs</dt><dd>{fmt(data.totals.tracks)}</dd></div>
@@ -106,7 +106,7 @@
 					<h2>Last month: {data.lastMonth.label} <a class="more" href={u(`/reports?period=${data.lastMonth.id}`)}>Full report</a></h2>
 					<dl class="mini">
 						<div><dt>Plays</dt><dd>{fmt(data.lastMonth.totals.plays)}</dd></div>
-						<div><dt>{timeUnitTitle()}</dt><dd>{listened(data.lastMonth.totals.ms)}</dd></div>
+						<div><dt>Time listened</dt><dd>{listened(data.lastMonth.totals.ms)}</dd></div>
 						<div><dt>Artists</dt><dd>{fmt(data.lastMonth.totals.artists)}</dd></div>
 					</dl>
 					{#if data.lastMonth.discovery}
@@ -136,7 +136,7 @@
 										<li>
 											<Cover src={t.image} alt={t.name} size={32} />
 											<span class="what"><a href={u(`/track/${t.id}`)}>{t.name}</a><small>{t.artist}</small></span>
-											<small class="n">{rankBy === 'minutes' ? `${listened(t.ms)} ${timeUnit() === 'minutes' ? 'min' : timeUnit()}` : `${fmt(t.plays)}×`}</small>
+											<small class="n">{rankBy === 'minutes' ? listened(t.ms) : `${fmt(t.plays)}×`}</small>
 										</li>
 									{/each}
 								</ul>

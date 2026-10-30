@@ -1,7 +1,7 @@
 <script lang="ts">
 	import BarList from '#lib/components/BarList.svelte';
 	import Columns from '#lib/components/Columns.svelte';
-	import { u, fmt, listened, timeUnitTitle, timeUnit } from '#lib/nav.js';
+	import { u, fmt, listened } from '#lib/nav.js';
 	import { monthName } from '#lib/time.js';
 
 	let { data } = $props();
@@ -9,11 +9,10 @@
 	const list = (rows: any[], kind: string) => rows.map((r) => ({ ...r, href: u(`/${kind}/${r.id}`), sub: r.artist, subHref: r.artist_id ? u(`/artist/${r.artist_id}`) : undefined }));
 	const pct = (p: number | null) => (p === null ? 'new' : `${p > 0 ? '+' : ''}${p}%`);
 	const trend = (p: number | null) => (p === null || p === 0 ? '' : p > 0 ? 'up' : 'down');
-	const unitLabel = $derived(timeUnit());
 	const prevName = $derived(data.period.m === null ? 'Previous year' : 'Previous month');
 	const stats = $derived([
 		{ k: 'Plays', v: fmt(data.totals.plays), d: data.delta.plays },
-		{ k: timeUnitTitle(), v: listened(data.totals.ms), d: data.delta.ms },
+		{ k: 'Time listened', v: listened(data.totals.ms), d: data.delta.ms },
 		{ k: 'Artists', v: fmt(data.totals.artists), d: data.delta.artists },
 		{ k: 'Songs', v: fmt(data.totals.tracks), d: data.delta.tracks }
 	]);
@@ -44,7 +43,7 @@
 			<div>
 				<dt>{s.k}</dt>
 				<dd>{s.v}</dd>
-				<span class="delta {trend(s.d.pct)}" title="{prevName}: {s.k === timeUnitTitle() ? listened(data.totals.ms - s.d.diff) : fmt((s.k === 'Plays' ? data.totals.plays : s.k === 'Artists' ? data.totals.artists : data.totals.tracks) - s.d.diff)}">
+				<span class="delta {trend(s.d.pct)}" title="{prevName}: {s.k === 'Time listened' ? listened(data.totals.ms - s.d.diff) : fmt((s.k === 'Plays' ? data.totals.plays : s.k === 'Artists' ? data.totals.artists : data.totals.tracks) - s.d.diff)}">
 					{pct(s.d.pct)} <small>vs {data.period.prev.label}</small>
 				</span>
 			</div>
@@ -90,7 +89,7 @@
 		</section>
 	</div>
 
-	<p class="muted small">Time listened is shown in {unitLabel}. <a href={u(`/history?range=all&month=${data.period.m === null ? `${data.period.y}-01` : data.period.id}`)}>Browse these plays in History</a>{#if data.period.m === null} · <a href={u(`/wrapped/${data.period.y}`)}>Year in review</a>{/if}</p>
+	<p class="muted small"><a href={u(`/history?range=all&month=${data.period.m === null ? `${data.period.y}-01` : data.period.id}`)}>Browse these plays in History</a>{#if data.period.m === null} · <a href={u(`/wrapped/${data.period.y}`)}>Year in review</a>{/if}</p>
 {/if}
 
 <style>

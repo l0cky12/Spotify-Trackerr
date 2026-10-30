@@ -3,13 +3,13 @@
 	import CoverGrid from '#lib/components/CoverGrid.svelte';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import TopNav from '#lib/components/TopNav.svelte';
-	import { u, withParams, timeUnitTitle } from '#lib/nav.js';
+	import { u, withParams } from '#lib/nav.js';
 	import { formatDate } from '#lib/time.js';
 	let { data } = $props();
 	const title = $derived({ track: 'Top songs', album: 'Top albums', artist: 'Top artists' }[data.kind as 'track']);
 	const sorts = $derived([
 		{ id: 'plays', label: 'Plays' },
-		{ id: 'minutes', label: timeUnitTitle() },
+		{ id: 'minutes', label: 'Time' },
 		{ id: 'last', label: 'Last played' },
 		{ id: 'first', label: 'First played' }
 	]);
@@ -40,8 +40,8 @@
 			{/each}
 		</div>
 		<div class="toggle" role="group" aria-label="View">
-			<a href={withParams({ view: null })} aria-current={!data.grid ? 'true' : undefined} data-sveltekit-noscroll>List</a>
-			<a href={withParams({ view: 'grid' })} aria-current={data.grid ? 'true' : undefined} data-sveltekit-noscroll>Images</a>
+			<a href={withParams({ view: 'list' })} aria-current={!data.grid ? 'true' : undefined} data-sveltekit-noscroll>List</a>
+			<a href={withParams({ view: null })} aria-current={data.grid ? 'true' : undefined} data-sveltekit-noscroll>Images</a>
 		</div>
 	</div>
 	{#if data.grid}

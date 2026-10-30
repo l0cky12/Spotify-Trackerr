@@ -22,7 +22,7 @@ import { importEntries, readUploads } from '#lib/server/ingest.js';
 import { storeUpload } from '#lib/server/entity.js';
 import { top } from '#lib/server/stats.js';
 import { bansOf, unban, BAN_KINDS, type BanKind } from '#lib/server/bans.js';
-import { TIME_UNITS } from '#lib/time.js';
+import { TIME_UNIT_CHOICES, type TimeUnit } from '#lib/time.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const u = locals.user!;
@@ -76,8 +76,8 @@ export const actions = {
 		const tz = String(f.get('timezone'));
 		if (!Intl.supportedValuesOf('timeZone').includes(tz) && tz !== 'UTC') return fail(400, { section: 'prefs', error: 'Pick a time zone from the list.' });
 		const name = String(f.get('display_name') ?? '').trim().slice(0, 60) || locals.user!.display_name;
-		const unit = String(f.get('time_unit'));
-		const timeUnit = unit in TIME_UNITS ? unit : 'minutes';
+		const unit = String(f.get('time_unit')) as TimeUnit;
+		const timeUnit = TIME_UNIT_CHOICES.includes(unit) ? unit : 'auto';
 		run('UPDATE users SET display_name = ?, timezone = ?, rank_by = ?, time_unit = ?, public = ? WHERE id = ?', name, tz, f.get('rank_by') === 'minutes' ? 'minutes' : 'plays', timeUnit, f.get('public') ? 1 : 0, locals.user!.id);
 		return { section: 'prefs', saved: true };
 	},
