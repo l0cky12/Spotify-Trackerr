@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import BarList from '#lib/components/BarList.svelte';
+	import CoverGrid from '#lib/components/CoverGrid.svelte';
 	import Columns from '#lib/components/Columns.svelte';
 	import Heatmap from '#lib/components/Heatmap.svelte';
 	import Trends from '#lib/components/Trends.svelte';
@@ -69,15 +70,15 @@
 	<div class="grid3">
 		<section class="panel">
 			<h2>Top songs <a class="more" href={u(`/top/track?range=${data.range}`)}>View top 100</a></h2>
-			<BarList items={list(data.tracks, 'track')} {rankBy} />
+			<CoverGrid items={list(data.tracks, 'track')} sort={rankBy} min={100} />
 		</section>
 		<section class="panel">
 			<h2>Top albums <a class="more" href={u(`/top/album?range=${data.range}`)}>View top 100</a></h2>
-			<BarList items={list(data.albums.slice(0, 10), 'album')} {rankBy} />
+			<CoverGrid items={list(data.albums.slice(0, 10), 'album')} sort={rankBy} min={100} />
 		</section>
 		<section class="panel">
 			<h2>Top artists <a class="more" href={u(`/top/artist?range=${data.range}`)}>View top 100</a></h2>
-			<BarList items={list(data.artists, 'artist')} {rankBy} round />
+			<CoverGrid items={list(data.artists, 'artist')} sort={rankBy} round min={100} />
 		</section>
 	</div>
 
@@ -116,8 +117,8 @@
 						</a>
 					{/if}
 					<div class="pair">
-						<div><h3>Top songs</h3><BarList items={list(data.lastMonth.tracks, 'track')} {rankBy} covers={false} /></div>
-						<div><h3>Top artists</h3><BarList items={list(data.lastMonth.artists, 'artist')} {rankBy} covers={false} /></div>
+						<div><h3>Top songs</h3><CoverGrid items={list(data.lastMonth.tracks, 'track')} sort={rankBy} min={80} /></div>
+						<div><h3>Top artists</h3><CoverGrid items={list(data.lastMonth.artists, 'artist')} sort={rankBy} round min={80} /></div>
 					</div>
 				</section>
 			{/if}

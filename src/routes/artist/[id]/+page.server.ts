@@ -3,7 +3,7 @@ import { all } from '#lib/server/db.js';
 import { entityPage, setBan, setImage } from '#lib/server/entity.js';
 import { bannedIds, recBanned } from '#lib/server/bans.js';
 import { top } from '#lib/server/stats.js';
-import { similarArtists, spotifySearchUrl } from '#lib/server/recs.js';
+import { similarArtists, spotifySearchUrl, withCovers } from '#lib/server/recs.js';
 import { lastfmApp } from '#lib/server/connections.js';
 import { unwatch, upcomingShows, watch, watching } from '#lib/server/shows.js';
 
@@ -24,7 +24,7 @@ export const load: PageServerLoad = (event) => {
 		similar: similarArtists(e.row.name).then((l) => {
 			const banned = bannedIds(event.locals.user!.id);
 			return l.filter((r) => !recBanned(banned, r)).map((r) => ({ ...r, url: r.artistId ? '' : spotifySearchUrl(r) }));
-		})
+		}).then(withCovers)
 	};
 };
 

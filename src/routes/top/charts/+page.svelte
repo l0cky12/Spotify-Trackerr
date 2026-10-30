@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Heatmap from '#lib/components/Heatmap.svelte';
-	import BarList from '#lib/components/BarList.svelte';
+	import CoverGrid from '#lib/components/CoverGrid.svelte';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import TopNav from '#lib/components/TopNav.svelte';
 	import { u, fmt, withParams } from '#lib/nav.js';
@@ -9,7 +9,7 @@
 	let { data } = $props();
 	const rangeLabel = $derived(RANGES.find((r) => r.id === data.range)!.label.toLowerCase());
 	const items = $derived(
-		data.firstHeard.map((r) => ({ ...r, href: u(`/track/${r.id}`), sub: `${r.artist} · first played ${formatDate(r.first, data.view.tz)}`, subHref: undefined }))
+		data.firstHeard.map((r) => ({ ...r, href: u(`/track/${r.id}`), sub: `${r.artist} · first played ${formatDate(r.first, data.view.tz)}` }))
 	);
 </script>
 
@@ -49,7 +49,7 @@
 
 <section class="panel">
 	<h2>First heard <small>{fmt(data.found)} songs first played {rangeLabel === 'all time' ? 'ever' : `in the last ${rangeLabel}`}, newest discovery first</small></h2>
-	<BarList {items} rankBy="plays" start={data.offset} />
+	<CoverGrid {items} start={data.offset} />
 	{#if data.pages > 1}
 		<nav class="pages">
 			{#each Array(data.pages) as _, i (i)}

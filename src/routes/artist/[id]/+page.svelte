@@ -1,14 +1,11 @@
 <script lang="ts">
 	import EntityHead from '#lib/components/EntityHead.svelte';
-	import BarList from '#lib/components/BarList.svelte';
 	import CoverGrid from '#lib/components/CoverGrid.svelte';
 	import RecList from '#lib/components/RecList.svelte';
-	import { u, withParams } from '#lib/nav.js';
-	import { page } from '$app/state';
+	import { u } from '#lib/nav.js';
 	import { enhance } from '$app/forms';
 	import { formatShowDate } from '#lib/time.js';
 	let { data, form } = $props();
-	const grid = $derived(page.url.searchParams.get('view') === 'grid');
 	const spotify = $derived(data.row.spotify_id ? `https://open.spotify.com/artist/${data.row.spotify_id}` : `https://open.spotify.com/search/${encodeURIComponent(data.row.name)}`);
 </script>
 
@@ -44,21 +41,11 @@
 <div class="cols">
 	<section class="panel">
 		<h2>Top songs</h2>
-		<BarList items={data.tracks.map((t) => ({ ...t, href: u(`/track/${t.id}`) }))} rankBy={data.view.rankBy} />
+		<CoverGrid items={data.tracks.map((t) => ({ ...t, href: u(`/track/${t.id}`) }))} sort={data.view.rankBy} min={100} />
 	</section>
-	<section class="panel" class:wide={grid}>
-		<h2>
-			Top albums
-			<span class="toggle" role="group" aria-label="View">
-				<a href={withParams({ view: null })} aria-current={!grid ? 'true' : undefined} data-sveltekit-noscroll>List</a>
-				<a href={withParams({ view: 'grid' })} aria-current={grid ? 'true' : undefined} data-sveltekit-noscroll>Images</a>
-			</span>
-		</h2>
-		{#if grid}
-			<CoverGrid items={data.albums.map((a) => ({ ...a, href: u(`/album/${a.id}`) }))} sort={data.view.rankBy} tz={data.view.tz} />
-		{:else}
-			<BarList items={data.albums.map((a) => ({ ...a, href: u(`/album/${a.id}`) }))} rankBy={data.view.rankBy} />
-		{/if}
+	<section class="panel">
+		<h2>Top albums</h2>
+		<CoverGrid items={data.albums.map((a) => ({ ...a, href: u(`/album/${a.id}`) }))} sort={data.view.rankBy} min={100} />
 	</section>
 	{#if data.lastfm}
 		<section class="panel">
@@ -95,25 +82,5 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 		gap: 20px;
-	}
-	.wide {
-		grid-column: 1 / -1;
-	}
-	.toggle {
-		display: flex;
-		gap: 2px;
-		font-size: 0.8rem;
-		font-weight: 400;
-	}
-	.toggle a {
-		padding: 2px 8px;
-		border-radius: 6px;
-		text-decoration: none;
-		color: var(--ink-2);
-	}
-	.toggle a[aria-current] {
-		background: var(--ink);
-		color: var(--page);
-		font-weight: 600;
 	}
 </style>
