@@ -8,7 +8,7 @@ process.env.SPOTIFY_CLIENT_ID = 'server-id';
 process.env.SPOTIFY_CLIENT_SECRET = 'server-secret';
 const db = await import('./db.js');
 const c = await import('./connections.js');
-const { syncAll, nowPlaying } = await import('./spotify.js');
+const { syncAll, syncDue, nowPlaying } = await import('./spotify.js');
 afterEach(() => vi.unstubAllGlobals());
 
 // Alice links through the server app, Bob through his own.
@@ -71,4 +71,25 @@ test('a rate limit on the token refresh pauses that app too', async () => {
 	vi.useRealTimers();
 	expect(calls).toHaveLength(1); // one refresh hit the limit; nothing else went out through that app
 	expect(db.all('SELECT sync_error FROM users').map((u) => u.sync_error)).toEqual([null, null]);
+});
+
+test('each person syncs on their own chosen interval', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	const start = Date.now() + 12 * 3600_000; // past earlier pauses
+	vi.setSystemTime(start);
+	db.run('UPDATE users SET spotify_expires = 9999999999, sync_error = NULL');
+	db.run('UPDATE users SET sync_minutes = 30 WHERE id = 2'); // Alice keeps the 5-minute default
+	const calls = fakeSpotify(() => Response.json({ items: [] }));
+	await syncAll();
+	const synced = async (minutes: number) => {
+		calls.length = 0;
+		vi.setSystemTime(start + minutes * 60_000);
+		await syncDue();
+		return calls.map((x) => x.token);
+	};
+	expect(await synced(4)).toEqual([]);
+	expect(await synced(5)).toEqual(['alice-token']);
+	expect(await synced(9)).toEqual([]);
+	expect(await synced(30)).toEqual(['alice-token', 'bob-token']);
+	vi.useRealTimers();
 });

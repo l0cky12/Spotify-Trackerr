@@ -194,6 +194,12 @@ try {
 	await expect(page.getByText("Your new access key. Copy it now; it won't be shown again.")).toBeVisible();
 	await page.screenshot({ path: join(outputDir, 'settings-ai-assistant.png'), fullPage: true, animations: 'disabled' });
 	console.log('Captured settings-ai-assistant.png');
+	// Shown as linked only for this capture: the offline demo can't reach Spotify, so a real sync would fail.
+	const link = new DatabaseSync(join(dataDir, 'trackerr.db'));
+	link.prepare('UPDATE users SET spotify_refresh = ?, spotify_authorized_at = ?, last_sync_at = ?, sync_minutes = 15, sync_error = NULL WHERE id = 1').run('demo', now - 30 * 86400, now - 120);
+	await capture('settings-spotify.png', '/settings?section=spotify', 'Settings');
+	link.prepare('UPDATE users SET spotify_refresh = NULL WHERE id = 1').run();
+	link.close();
 	await capture('settings.png', '/settings?section=lastfm', 'Settings');
 	await capture('settings-listenbrainz.png', '/settings?section=listenbrainz', 'Settings');
 	await capture('settings-preferences.png', '/settings?section=prefs', 'Settings');

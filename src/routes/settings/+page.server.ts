@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { apiTokensOf, checkPassword, createApiToken, createUser, endSession, hashPassword, revokeApiToken, validUsername } from '#lib/server/auth.js';
 import {
+	activeSpotifyLink,
 	checkLastfmApp,
 	connectionStatus,
 	LINKED_SQL,
@@ -17,6 +18,7 @@ import {
 	spotifyServerAppConfigured,
 	unlinkSpotify
 } from '#lib/server/connections.js';
+import { syncUser } from '#lib/server/spotify.js';
 import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
 import { storeUpload } from '#lib/server/entity.js';
@@ -36,6 +38,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			timeUnit: u.time_unit as string,
 			public: !!u.public,
 			avatar: (u.avatar as string | null) ?? null,
+			syncMinutes: u.sync_minutes as number,
 			...connectionStatus(u)
 		},
 		// Pictures to pick a profile picture from: the person's most played artists that have one.
@@ -53,6 +56,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		imports: all('SELECT * FROM imports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', u.id),
 		bans: bansOf(u.id),
 		pending: get('SELECT COUNT(*) n FROM tracks WHERE enriched != 1')!.n as number,
+		syncChoices: SYNC_MINUTES,
 		timezones: Intl.supportedValuesOf('timeZone'),
 		error: url.searchParams.get('error'),
 		linkedNow: url.searchParams.has('linked'),
@@ -67,6 +71,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 			: null
 	};
 };
+
+const SYNC_MINUTES = [5, 10, 15, 20, 25, 30];
 
 const requireAdmin = (locals: App.Locals) => {
 	if (!locals.user?.is_admin) throw redirect(303, '/settings');
@@ -129,6 +135,19 @@ export const actions = {
 		if (get('SELECT 1 FROM users WHERE username = ? AND id != ?', username, u.id)) return fail(400, { section: 'password', error: 'That username is taken.' });
 		run('UPDATE users SET username = ?, password_hash = ? WHERE id = ?', username, hashPassword(pw), u.id);
 		return { section: 'password', saved: true };
+	},
+	syncEvery: async ({ request, locals }) => {
+		const minutes = Number((await request.formData()).get('minutes'));
+		if (!SYNC_MINUTES.includes(minutes)) return fail(400, { section: 'spotify', error: 'Pick how often to sync from the list.' });
+		run('UPDATE users SET sync_minutes = ? WHERE id = ?', minutes, locals.user!.id);
+		return { section: 'spotify', saved: true };
+	},
+	syncNow: async ({ locals }) => {
+		const user = activeSpotifyLink(locals.user!.id);
+		if (!user) return fail(400, { section: 'spotify', error: 'Link Spotify first.' });
+		const r = await syncUser(user);
+		if ('error' in r) return fail(502, { section: 'spotify', error: `Sync failed: ${r.error}` });
+		return { section: 'spotify', synced: r.added };
 	},
 	unlink: async ({ locals }) => {
 		if (!locals.user!.password_hash) return fail(400, { section: 'spotify', error: 'Set a username and password first; otherwise you could no longer log in.' });
