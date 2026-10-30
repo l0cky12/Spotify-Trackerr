@@ -91,29 +91,98 @@ async function deezerImage(r: Rec): Promise<string | null> {
 	}).catch(() => null);
 }
 
+// A remembered "not played yet" is asked again after this long, and sooner if the scrobbles since name its artist.
+const HEARD_TTL = 7 * 86400;
+// Scrobbles can arrive late (offline phones), so the scrobbles checked reach back this far before the last check.
+const SCROBBLE_SLACK = 86400;
+const RECENT_PAGES = 10;
+
+const heardKey = (r: Rec) => [r.title ? 'track' : r.album ? 'album' : 'artist', key(r.artist), key(r.title ?? r.album ?? '')].join('\0');
+
+/** Every artist (and collaboration member) the user scrobbled since `from`, or null when Last.fm can't say or there are too many. */
+async function scrobbledArtists(username: string, from: number): Promise<Set<string> | null> {
+	const artists = new Set<string>();
+	for (let page = 1; page <= RECENT_PAGES; page++) {
+		const r = await lastfm({ method: 'user.getrecenttracks', user: username, from: String(from), limit: '200', page: String(page) }).catch(() => null);
+		if (!r?.recenttracks) return null;
+		const tracks = r.recenttracks.track;
+		for (const t of Array.isArray(tracks) ? tracks : tracks ? [tracks] : []) {
+			const name = t?.artist?.['#text'] ?? t?.artist?.name;
+			if (validName(name)) for (const m of members(name)) artists.add(loose(m));
+		}
+		if (page >= Number(r.recenttracks['@attr']?.totalPages ?? 1)) return artists;
+	}
+	return null;
+}
+
+/**
+ * What Last.fm said about each candidate on earlier refreshes: played, which never changes, or not played yet as of
+ * a time, kept for a week unless a scrobble since names that artist. So a refresh asks Last.fm about new candidates
+ * and the few the user may have just played, not all of them again.
+ */
+async function rememberedPlays(username: string) {
+	const store = `lfm:heard:${key(username)}`;
+	const saved = get('SELECT value FROM cache WHERE key = ?', store);
+	// true: played. A number: when Last.fm last said not played.
+	const old = saved ? (JSON.parse(saved.value) as { at: number; plays: Record<string, true | number> }) : null;
+	const at = now();
+	const recent = old && at - old.at < HEARD_TTL ? await scrobbledArtists(username, old.at - SCROBBLE_SLACK) : null;
+	const trusted = (k: string, v: true | number) =>
+		v === true || (!!recent && at - v < HEARD_TTL && !members(k.split('\0')[1]).some((m) => recent.has(loose(m))));
+	const plays = new Map(Object.entries(old?.plays ?? {}).filter(([k, v]) => trusted(k, v)));
+	const used = new Map<string, true | number>();
+	return {
+		username,
+		/** true played, false not played yet, undefined when Last.fm needs asking. */
+		get: (r: Rec) => {
+			const k = heardKey(r);
+			const v = used.get(k) ?? plays.get(k);
+			if (v === undefined) return undefined;
+			used.set(k, v);
+			return v === true;
+		},
+		set: (r: Rec, played: boolean) => void used.set(heardKey(r), played || at),
+		/** Keeps just this refresh's answers, so the store stays the size of one set of picks. */
+		save: () => run(
+			'INSERT INTO cache (key, value, fetched_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at',
+			store,
+			JSON.stringify({ at, plays: Object.fromEntries(used) }),
+			at
+		)
+	};
+}
+type Plays = Awaited<ReturnType<typeof rememberedPlays>>;
+
 /**
  * Check only the candidate picks against Last.fm's lifetime user counts, rather than downloading history.
- * All at once: getJson's Last.fm queue paces the requests.
+ * All at once: getJson's Last.fm queue paces the requests. `found` hears about each pick as soon as it's kept.
  */
-async function unheard(list: Rec[], username: string | null): Promise<Rec[]> {
-	if (!username) return list;
-	const keep = await Promise.all(
-		list.map(async (r) => {
-			const kind = r.title ? 'track' : r.album ? 'album' : 'artist';
-			let info;
-			try {
-				info = await lastfm({ method: `${kind}.getInfo`, artist: r.artist, username, autocorrect: '1', ...(r.title ? { track: r.title } : r.album ? { album: r.album } : {}) });
-			} catch (e) {
-				if ((e as { code?: number }).code === 6) return false; // Unknown candidate: don't recommend unverified music.
-				throw new Error('Could not check your Last.fm listening history. Try again later.');
-			}
-			const count = kind === 'artist' ? info.artist?.stats?.userplaycount : info[kind]?.userplaycount;
-			const plays = typeof count === 'string' && /^\d+$/.test(count) ? Number(count) : typeof count === 'number' ? count : NaN;
-			if (!Number.isSafeInteger(plays) || plays < 0)
-				throw new Error('Last.fm did not return a listening count. Try again later.');
-			return plays === 0;
-		})
-	);
+async function unheard(list: Rec[], memory: Plays | null, found: (r: Rec) => void): Promise<Rec[]> {
+	if (!memory) {
+		list.forEach(found);
+		return list;
+	}
+	const isNew = async (r: Rec) => {
+		const known = memory.get(r);
+		if (known !== undefined) return !known;
+		// No plays of the artist means no plays of any of their songs or albums.
+		if ((r.title || r.album) && memory.get({ artist: r.artist }) === false) return true;
+		const kind = r.title ? 'track' : r.album ? 'album' : 'artist';
+		let info;
+		try {
+			info = await lastfm({ method: `${kind}.getInfo`, artist: r.artist, username: memory.username, autocorrect: '1', ...(r.title ? { track: r.title } : r.album ? { album: r.album } : {}) });
+		} catch (e) {
+			if ((e as { code?: number }).code === 6) return false; // Unknown candidate: don't recommend unverified music.
+			throw new Error('Could not check your Last.fm listening history. Try again later.');
+		}
+		const count = kind === 'artist' ? info.artist?.stats?.userplaycount : info[kind]?.userplaycount;
+		const plays = typeof count === 'string' && /^\d+$/.test(count) ? Number(count) : typeof count === 'number' ? count : NaN;
+		if (!Number.isSafeInteger(plays) || plays < 0)
+			throw new Error('Last.fm did not return a listening count. Try again later.');
+		memory.set(r, plays > 0);
+		return plays === 0;
+	};
+	const keep = await Promise.all(list.map(async (r) => (await isNew(r)) && (found(r), true)));
 	return list.filter((_, i) => keep[i]);
 }
 
@@ -200,27 +269,35 @@ export async function buildDiscover(user: Row) {
 	const songKey = (r: { artist: string; title?: string }) => loose(r.artist) + '\0' + bareTitle(r.title ?? '');
 	const heardSongs = new Set([...seedSongs, ...credited].map(songKey));
 
+	const memory = user.lastfm_user ? await rememberedPlays(user.lastfm_user) : null;
+	// Each pick's cover loads as soon as the pick is kept, while Last.fm checks the rest.
+	// One cover first: if Deezer is down that pauses it, and the rest skip instead of queueing behind the pause.
+	let probe: Promise<void> | null = null;
+	const covers: Promise<void>[] = [];
+	const cover = async (r: Rec) => void (r.image = await deezerImage(r));
+	const found = (r: Rec) => void (r.image || covers.push(probe ? probe.then(() => cover(r)) : (probe = cover(r))));
+
+	// Artists first: songs and albums by an artist Last.fm says the user never played need no check of their own.
 	const artists = await unheard(interleave(
 		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s, PER_SEED)).filter((r) => !isHeardArtist(r.artist)).map((r) => ({ ...r, why: s })))),
 		(r) => loose(r.artist),
 		MAX_PICKS
-	), user.lastfm_user ?? null);
-	const songs = await unheard(interleave(
-		await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title })))),
-		songKey,
-		MAX_PICKS
-	), user.lastfm_user ?? null);
-	// Each new artist's best-known album, checked on its own: Last.fm may file it under another spelling of the artist.
-	const albums = (await Promise.all(artists.map(async (a) => {
-		const al = await topAlbum(a.artist);
-		return al && (!al.albumId || !get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId)) ? { ...al, why: a.why } : null;
-	}))).filter((r) => r !== null);
-	const newAlbums = await unheard(albums, user.lastfm_user ?? null);
-	// One cover first: if Deezer is down that pauses it, and the rest skip instead of queueing behind the pause.
-	const coverless = [...artists, ...newAlbums, ...songs].filter((r) => !r.image);
-	const cover = async (r: Rec) => void (r.image = await deezerImage(r));
-	if (coverless.length) await cover(coverless[0]);
-	await Promise.all(coverless.slice(1).map(cover));
+	), memory, found);
+	const [songs, newAlbums] = await Promise.all([
+		unheard(interleave(
+			await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title })))),
+			songKey,
+			MAX_PICKS
+		), memory, found),
+		// Each new artist's best-known album, checked on its own: Last.fm may file it under another spelling of the artist.
+		Promise.all(artists.map(async (a) => {
+			const al = await topAlbum(a.artist);
+			if (!al || (al.albumId && get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId))) return [];
+			return unheard([{ ...al, why: a.why }], memory, found);
+		})).then((albums) => albums.flat())
+	]);
+	memory?.save();
+	await Promise.all(covers);
 
 	const value = {
 		seeds: seedArtists,

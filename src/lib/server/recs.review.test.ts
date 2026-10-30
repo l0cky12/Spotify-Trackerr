@@ -94,6 +94,9 @@ test('excludes historical Last.fm artists, tracks and albums beyond the seed lis
     switch (u.searchParams.get('method')) {
       case 'artist.getsimilar': return { similarartists: { artist: [{ name: 'Heard Elsewhere' }, { name: 'New Band' }] } };
       case 'artist.getInfo': return { artist: { stats: { userplaycount: u.searchParams.get('artist') === 'Heard Elsewhere' ? '9' : '0' } } };
+      // A song by an artist that isn't an artist pick, and an album Last.fm files under another spelling of the artist.
+      case 'track.getsimilar': return { similartracks: { track: [{ name: 'Fresh', artist: { name: 'Other Band' }, match: '1' }] } };
+      case 'artist.gettopalbums': return { topalbums: { album: [{ name: 'Debut', artist: { name: 'The New Band' } }] } };
       case 'track.getInfo': return { track: { userplaycount: '4' } };
       case 'album.getInfo': return { album: { userplaycount: '2' } };
     }
@@ -134,7 +137,7 @@ test('preserves existing picks when Last.fm cannot verify listening history', as
 test('a refresh already in flight cannot restore picks after unlink', async () => {
   const snapshot = user();
   fakeFetch((u) => {
-    if (u.searchParams.get('method') === 'track.getInfo') connections.setLastfmUser(1, null);
+    if (u.searchParams.get('method') === 'artist.gettopalbums') connections.setLastfmUser(1, null);
     return defaults(u);
   });
   await finish(recs.buildDiscover(snapshot));
@@ -252,4 +255,70 @@ test.each(['missing', 'mismatched', 'cancelled', 'anonymous', 'malformed'])('sec
   expect(result?.status).toBe(303);
   expect(calls).toHaveLength(0);
   expect(user().lastfm_user).toBe('alice-fm');
+});
+
+const DAY = 86_400_000;
+const infoCalls = (calls: { url: URL }[]) => calls.filter((c) => c.url.searchParams.get('method')?.endsWith('.getInfo')).map((c) => `${c.url.searchParams.get('method')} ${c.url.searchParams.get('artist')}`);
+function scrobbling(scrobbled: string[], recent = true) {
+  return (u: URL) => {
+    switch (u.searchParams.get('method')) {
+      case 'artist.getsimilar': return { similarartists: { artist: [{ name: 'New Band' }, { name: 'Other Band' }] } };
+      case 'user.getrecenttracks': return recent ? { recenttracks: { track: scrobbled.map((a) => ({ artist: { '#text': a }, name: 'Song' })), '@attr': { totalPages: '1' } } } : {};
+      case 'artist.getInfo': return { artist: { stats: { userplaycount: scrobbled.includes(u.searchParams.get('artist')!) ? '1' : '0' } } };
+    }
+    return defaults(u);
+  };
+}
+
+test('a later refresh asks Last.fm only about picks the scrobbles since may have changed', async () => {
+  const scrobbled: string[] = [];
+  let calls = fakeFetch(scrobbling(scrobbled));
+  await finish(recs.buildDiscover(user()));
+  // Songs and albums by artists the user never played need no check of their own.
+  expect(infoCalls(calls)).toEqual(['artist.getInfo New Band', 'artist.getInfo Other Band']);
+
+  calls = fakeFetch(scrobbling(scrobbled));
+  expect((await finish(recs.buildDiscover(user()))).artists.map((r) => r.artist)).toEqual(['New Band', 'Other Band']);
+  expect(infoCalls(calls)).toEqual([]);
+
+  scrobbled.push('Other Band');
+  calls = fakeFetch(scrobbling(scrobbled));
+  expect((await finish(recs.buildDiscover(user()))).artists.map((r) => r.artist)).toEqual(['New Band']);
+  expect(infoCalls(calls)).toEqual(['artist.getInfo Other Band']);
+});
+
+test('asks Last.fm about every pick again when recent scrobbles cannot be read', async () => {
+  fakeFetch(scrobbling([]));
+  await finish(recs.buildDiscover(user()));
+  const calls = fakeFetch(scrobbling([], false));
+  await finish(recs.buildDiscover(user()));
+  expect(infoCalls(calls)).toEqual(['artist.getInfo New Band', 'artist.getInfo Other Band']);
+});
+
+test('asks again about picks Last.fm said were unplayed a week ago, even with daily refreshes', async () => {
+  fakeFetch(scrobbling([]));
+  await finish(recs.buildDiscover(user()));
+  const asked: number[] = [];
+  for (let day = 1; day <= 7; day++) {
+    vi.setSystemTime(Date.now() + DAY);
+    const calls = fakeFetch(scrobbling([]));
+    await finish(recs.buildDiscover(user()));
+    asked.push(infoCalls(calls).length);
+  }
+  expect(asked).toEqual([0, 0, 0, 0, 0, 0, 2]);
+});
+
+test('Last.fm requests keep their pace without waiting for slow answers, and a rate limit pauses the rest', async () => {
+  const started: number[] = [];
+  vi.stubGlobal('fetch', async () => {
+    started.push(Date.now());
+    const first = started.length === 1;
+    await new Promise((r) => setTimeout(r, 600));
+    return new Response(JSON.stringify(first ? { error: 29 } : {}));
+  });
+  const ask = () => getJson('https://ws.audioscrobbler.com/2.0/?method=x&format=json');
+  await finish(Promise.all([ask().catch(() => null), ask(), ask(), ask()]));
+  // Two more start on pace while the first is still answering; the next waits out the rate limit it reports.
+  expect(started.slice(1, 3).map((t, i) => t - started[i])).toEqual([250, 250]);
+  expect(started[3] - started[0]).toBeGreaterThanOrEqual(10_600);
 });
