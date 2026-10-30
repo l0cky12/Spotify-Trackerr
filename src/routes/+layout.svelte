@@ -14,6 +14,7 @@
 		{ href: '/reports', label: 'Reports' },
 		{ href: '/wrapped', label: 'Year in review' },
 		{ href: '/discover', label: 'Discover', own: true },
+		{ href: '/shows', label: 'Shows', own: true },
 		{ href: '/playlists', label: 'Playlists', own: true },
 		{ href: '/people', label: 'People', own: true },
 		{ href: '/settings', label: 'Settings', own: true }
@@ -33,7 +34,9 @@
 		<a class="brand" href="/">Trackerr</a>
 		<nav>
 			{#each links as l (l.href)}
-				<a href={l.own ? l.href : u(l.href)} aria-current={active(l.href) ? 'page' : undefined}>{l.label}</a>
+				<a href={l.own ? l.href : u(l.href)} aria-current={active(l.href) ? 'page' : undefined}>
+					{l.label}{#if l.href === '/shows' && data.me.newShows}<span class="badge" title="{data.me.newShows} new shows near you">{data.me.newShows}</span><span class="sr-only"> new</span>{/if}
+				</a>
 			{/each}
 		</nav>
 	</header>
@@ -89,6 +92,27 @@
 	nav a[aria-current] {
 		color: var(--ink);
 		background: var(--surface-2);
+	}
+	.badge {
+		display: inline-block;
+		min-width: 1.4em;
+		margin-left: 5px;
+		padding: 0 5px;
+		border-radius: 999px;
+		background: var(--series-1);
+		color: var(--page);
+		font-size: 0.72rem;
+		font-weight: 700;
+		text-align: center;
+		line-height: 1.5;
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.banner {
 		padding: 8px 28px;

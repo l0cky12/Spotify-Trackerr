@@ -1,7 +1,7 @@
 # Demo screenshots
 
 These PNGs are captured from the current production build. They use fictional artists, albums,
-songs, artwork, people, listening history, and cached recommendation picks. Last.fm and
+songs, artwork, people, listening history, cached recommendation picks, and concert venues. Last.fm and
 ListenBrainz usernames are demo labels, not authenticated connections to those services.
 
 The demo clock is fixed at October 29, 2026, with listening history across 2025 and 2026 so the

@@ -17,6 +17,7 @@
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
+		{ id: 'mcp', group: 'Connections', title: 'AI assistant', alert: false, body: mcpSection },
 		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
 		{ id: 'bans', group: 'Your data', title: 'Banned', alert: false, body: bansSection },
 		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
@@ -308,6 +309,59 @@
 {/if}
 {/snippet}
 
+{#snippet mcpSection()}
+<p>
+	Connect an AI assistant (Claude, or any app that supports MCP servers) so it can watch for concerts by the artists you
+	<a href="/shows">watch</a>. It reads your watchlist and home, searches for shows near you, and saves new ones to Shows. It can also change your
+	watchlist and home, and see your top artists. It can't see your listening history or change anything else.
+</p>
+<p>MCP server address:</p>
+<p><code>{data.mcpUrl}</code></p>
+{#if msg('mcp')?.token}
+	{@const token = msg('mcp')!.token}
+	<div class="key">
+		<p class="ok">Your new access key. Copy it now; it won't be shown again.</p>
+		<p><code>{token}</code></p>
+		<p class="small">For <strong>Claude Code</strong>, run:</p>
+		<p><code>claude mcp add --transport http trackerr {data.mcpUrl} --header "Authorization: Bearer {token}"</code></p>
+		<p class="small">For apps with an MCP settings file:</p>
+		<pre><code>{JSON.stringify({ mcpServers: { trackerr: { type: 'http', url: data.mcpUrl, headers: { Authorization: `Bearer ${token}` } } } }, null, 2)}</code></pre>
+		<p class="small">For apps that only take an address, such as a claude.ai custom connector, use this one (keep it private; it has the key in it):</p>
+		<p><code>{data.mcpUrl}?key={token}</code></p>
+	</div>
+{/if}
+<form method="POST" action="?section=mcp&/createKey" use:enhance class="row">
+	<label>Key name <input name="name" placeholder="Claude" maxlength="60" /></label>
+	<button>Make an access key</button>
+</form>
+{#if data.apiTokens.length}
+	<table>
+		<thead><tr><th>Key</th><th>Made</th><th>Last used</th><th></th></tr></thead>
+		<tbody>
+			{#each data.apiTokens as t (t.id)}
+				<tr>
+					<td>{t.name}</td>
+					<td>{formatDate(t.created_at, data.u.timezone)}</td>
+					<td>{t.last_used_at ? formatWhen(t.last_used_at, data.u.timezone) : 'Never'}</td>
+					<td>
+						<form method="POST" action="?section=mcp&/revokeKey" use:enhance={({ cancel }) => { if (!confirm(`Revoke ${t.name}? Assistants using it will stop working.`)) cancel(); }}>
+							<input type="hidden" name="id" value={t.id} />
+							<button class="danger small-btn">Revoke</button>
+						</form>
+					</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+{/if}
+<h3 class="sub">Try asking</h3>
+<p class="muted">“Check Trackerr for shows near me by the artists I watch. Save any you find and tell me which ones are new.”</p>
+<p class="muted small">
+	To be alerted without asking, run that on a schedule, for example a weekly scheduled task in your assistant. The assistant has to be able to reach
+	this address: apps on your own devices can use your Tailscale address, but cloud apps like claude.ai need the public address.
+</p>
+{/snippet}
+
 {#snippet accountSection()}
 <form method="POST" action="/logout"><button class="secondary">Log out</button></form>
 <form method="POST" action="?section=account&/deleteAccount" use:enhance class="stack danger-zone">
@@ -483,6 +537,21 @@
 	}
 	.create {
 		margin-top: 8px;
+	}
+	.key {
+		margin: 4px 0 16px;
+		padding: 14px 16px;
+		border-radius: 10px;
+		background: var(--surface-2);
+	}
+	pre {
+		margin: 0 0 10px;
+		overflow-x: auto;
+	}
+	pre code {
+		display: block;
+		padding: 10px;
+		word-break: normal;
 	}
 	.danger-zone {
 		margin-top: 18px;

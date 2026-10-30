@@ -5,6 +5,8 @@
 	import RecList from '#lib/components/RecList.svelte';
 	import { u, withParams } from '#lib/nav.js';
 	import { page } from '$app/state';
+	import { enhance } from '$app/forms';
+	import { formatShowDate } from '#lib/time.js';
 	let { data, form } = $props();
 	const grid = $derived(page.url.searchParams.get('view') === 'grid');
 	const spotify = $derived(data.row.spotify_id ? `https://open.spotify.com/artist/${data.row.spotify_id}` : `https://open.spotify.com/search/${encodeURIComponent(data.row.name)}`);
@@ -12,8 +14,32 @@
 
 <EntityHead kind="artist" id={data.id} title={data.row.name} image={data.image} round totals={data.totals} monthly={data.monthly} tz={data.view.tz} readonly={data.view.readonly} bannedBy={data.bannedBy} {form}>
 	{#if data.genres.length}<p class="genres">{data.genres.join(', ')}</p>{/if}
-	<p><a class="button" href={spotify} target="_blank" rel="noopener">Open in Spotify</a></p>
+	<div class="actions">
+		<a class="button" href={spotify} target="_blank" rel="noopener">Open in Spotify</a>
+		{#if data.watching !== null}
+			<form method="POST" action={data.watching ? '?/unwatch' : '?/watch'} use:enhance>
+				<button class="secondary" aria-pressed={data.watching} title="Your AI assistant looks for shows near you by the artists you watch. See Shows.">
+					{data.watching ? 'Watching for shows ✓' : 'Watch for shows'}
+				</button>
+			</form>
+		{/if}
+	</div>
 </EntityHead>
+
+{#if data.shows.length}
+	<section class="panel shows">
+		<h2>Upcoming shows near you <small><a href="/shows">All shows</a></small></h2>
+		<ul>
+			{#each data.shows as s (s.id)}
+				<li>
+					<strong>{formatShowDate(s.date)}</strong>
+					· {s.venue}, {s.city}
+					{#if s.url}· <a href={s.url} target="_blank" rel="noopener">Details</a>{/if}
+				</li>
+			{/each}
+		</ul>
+	</section>
+{/if}
 
 <div class="cols">
 	<section class="panel">
@@ -49,6 +75,21 @@
 <style>
 	.genres {
 		color: var(--ink-2);
+	}
+	.actions {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.shows {
+		margin-bottom: 20px;
+	}
+	.shows ul {
+		margin: 0;
+		padding-left: 18px;
+		display: grid;
+		gap: 4px;
 	}
 	.cols {
 		display: grid;
