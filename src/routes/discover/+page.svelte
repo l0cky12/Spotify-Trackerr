@@ -36,6 +36,8 @@
 <p class="muted lede">
 	Artists, albums and songs you haven't played yet, picked by Last.fm from
 	{data.lastfmUser ? 'your Last.fm top artists and songs' : data.listenbrainzUser ? 'your ListenBrainz top artists and songs' : "what you've played most"} in the last month.
+	Artists listed as AI-made by <a href="https://souloverai.com" target="_blank" rel="noopener">Soul Over AI</a>
+	(<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>) are left out.
 </p>
 
 {#if !data.enabled}
