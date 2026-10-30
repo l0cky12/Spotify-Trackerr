@@ -5,18 +5,31 @@ import { join } from 'node:path';
 import { get, run, DATA_DIR } from './db.js';
 import { entityTotals, monthly } from './stats.js';
 import { viewOf } from './view.js';
+import { ban, banOn, unban } from './bans.js';
 
 export type EntityKind = 'track' | 'album' | 'artist';
 const TABLE = { track: 'tracks', album: 'albums', artist: 'artists' } as const;
 const COL = { track: 'track_id', album: 'album_id', artist: 'artist_id' } as const;
 
-/** Shared data for song/album/artist pages: totals, first/last play, plays per month with peak. */
+/** Shared data for song/album/artist pages: totals, first/last play, plays per month with peak, and the viewer's ban on it if any. */
 export function entityPage(event: RequestEvent, kind: EntityKind) {
 	const id = Number(event.params.id);
 	const row = get(`SELECT * FROM ${TABLE[kind]} WHERE id = ?`, id);
 	if (!row) error(404, 'Not found');
 	const view = viewOf(event);
-	return { id, row, view, totals: entityTotals(view.ids, COL[kind], id), monthly: monthly(view.ids, COL[kind], id, view.tz) };
+	const bannedBy = view.readonly ? null : banOn(event.locals.user!.id, kind, id);
+	return { id, row, view, bannedBy, totals: entityTotals(view.ids, COL[kind], id), monthly: monthly(view.ids, COL[kind], id, view.tz) };
+}
+
+/** Bans or unbans the page's song, album or artist (or, with a posted kind and id, the album or artist a ban came from). */
+export async function setBan(event: RequestEvent, kind: EntityKind, on: boolean) {
+	const f = await event.request.formData();
+	const target = (f.get('kind') as EntityKind | null) ?? kind;
+	const id = Number(f.get('id') ?? event.params.id);
+	if (!(target in TABLE) || !Number.isInteger(id)) return fail(400, { banError: 'Nothing to change.' });
+	if (on) return ban(event.locals.user!.id, target, id) ? { banned: true } : fail(404, { banError: 'Not found.' });
+	unban(event.locals.user!.id, target, id);
+	return { unbanned: true };
 }
 
 /** Saves an uploaded picture under the data directory; returns its /img/ path, or why it was refused. */

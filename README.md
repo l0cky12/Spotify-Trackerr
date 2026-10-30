@@ -32,6 +32,9 @@ recommendation picks. No personal listening data or real connected accounts are 
   recorded history, using Last.fm recommendations. Connect Last.fm or ListenBrainz in Settings
   to use your top artists and songs from those services; otherwise it uses your local history.
   Last.fm is preferred, with ListenBrainz and local history as fallbacks when needed.
+- **Ban what you don't want to see.** Ban a song, album, or artist from its page and it
+  disappears from your stats, top lists, charts, history, search, and recommendations. The plays
+  stay saved: unban it from the page or from Settings → Banned and everything comes back.
 - **Share with people on your server.** Make your listening visible to other signed-in users,
   browse their dashboards and histories through People, or view everyone's shared listening
   together. Visibility is controlled in Settings.

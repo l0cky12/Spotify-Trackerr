@@ -89,3 +89,53 @@ test('signup, import, permissions, logout, and login work in the production buil
 	await page.getByRole('button', { name: 'Log in', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Your listening', exact: true })).toBeVisible();
 });
+
+// Uses the account the test above created: sign-up is only open for the first account.
+test('banning an artist hides it everywhere until it is unbanned', async ({ page }) => {
+	await page.goto('/login');
+	await page.getByLabel('Username', { exact: true }).fill('ci-admin');
+	await page.getByLabel('Password', { exact: true }).fill('test-only-password');
+	await page.getByRole('button', { name: 'Log in', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Your listening', exact: true })).toBeVisible();
+
+	const entry = (artist: string, song: string, minutesAgo: number) => ({
+		ts: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+		ms_played: 180_000,
+		master_metadata_track_name: song,
+		master_metadata_album_artist_name: artist,
+		master_metadata_album_album_name: `${artist} Album`,
+		spotify_track_uri: `spotify:track:${song.replace(/\W/g, '')}`
+	});
+	await page.goto('/settings?section=import');
+	await page.locator('input[type=file]').setInputFiles({
+		name: 'Streaming_History_Audio_bans.json',
+		mimeType: 'application/json',
+		buffer: Buffer.from(JSON.stringify([entry('Banned Band', 'Earworm', 30), entry('Banned Band', 'Earworm', 20), entry('Kept Band', 'Keeper', 10)]))
+	});
+	await page.getByRole('button', { name: 'Import', exact: true }).click();
+	await expect(page.getByText('Added 3 plays.', { exact: true })).toBeVisible();
+
+	await page.goto('/top/artist?range=all');
+	await page.getByRole('link', { name: 'Banned Band', exact: false }).first().click();
+	await expect(page.getByRole('heading', { name: 'Banned Band', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Ban artist', exact: true }).click();
+	await expect(page.getByText('You banned this artist.', { exact: true })).toBeVisible();
+	await page.goto('/history?range=all');
+	await expect(page.getByRole('link', { name: 'Earworm', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Keeper', exact: true })).toBeVisible();
+
+	await page.goto('/top/artist?range=all');
+	await expect(page.getByRole('link', { name: 'Kept Band', exact: false }).first()).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Banned Band', exact: false })).toHaveCount(0);
+	await page.goto('/?range=all');
+	await expect(page.getByText('Banned Band')).toHaveCount(0);
+	expect((await (await page.request.get('/api/search?q=Banned')).json()).artists).toEqual([]);
+
+	await page.goto('/settings?section=bans');
+	const row = page.getByRole('listitem').filter({ hasText: 'Banned Band' });
+	await expect(row).toBeVisible();
+	await row.getByRole('button', { name: 'Unban', exact: true }).click();
+	await expect(page.getByText('Nothing banned yet.', { exact: true })).toBeVisible();
+	await page.goto('/top/artist?range=all');
+	await expect(page.getByRole('link', { name: 'Banned Band', exact: false }).first()).toBeVisible();
+});

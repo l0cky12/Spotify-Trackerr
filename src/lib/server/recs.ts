@@ -2,6 +2,7 @@ import { get, all, cached, run, now, type Row } from './db.js';
 import { lastfmApp } from './connections.js';
 import { key } from './ingest.js';
 import { lastfm, realPicture, getJson, same } from './enrich.js';
+import { bannedKeys, notBanned } from './bans.js';
 
 const validName = (s: unknown): s is string => typeof s === 'string' && !!s.trim();
 
@@ -172,14 +173,18 @@ export async function buildDiscover(user: Row) {
 		seedArtists = a.filter((x) => validName(x?.artist_name)).map((x) => x.artist_name);
 		if (!seedSongs.length) seedSongs = t.filter((x) => validName(x?.recording_name) && validName(x?.artist_credit_name)).map((x) => ({ artist: x.artist_credit_name, title: x.recording_name }));
 	}
+	// Banned artists and songs never seed picks, wherever the seeds came from.
+	const banned = bannedKeys(user.id);
+	seedArtists = seedArtists.filter((a) => !banned.artist(a));
+	seedSongs = seedSongs.filter((s) => !banned.song(s.artist, s.title));
 	if (!seedArtists.length)
 		seedArtists = topLocal(
-			'SELECT a.name FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ? AND p.played_at >= ? GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 5',
+			`SELECT a.name FROM plays p JOIN artists a ON a.id = p.artist_id WHERE p.user_id = ? AND p.played_at >= ?${notBanned([user.id])} GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 5`,
 			user.id
 		).map((r) => r.name as string);
 	if (!seedSongs.length)
 		seedSongs = topLocal(
-			'SELECT a.name artist, t.name title FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ? AND p.played_at >= ? GROUP BY t.id ORDER BY COUNT(*) DESC LIMIT 5',
+			`SELECT a.name artist, t.name title FROM plays p JOIN tracks t ON t.id = p.track_id JOIN artists a ON a.id = t.artist_id WHERE p.user_id = ? AND p.played_at >= ?${notBanned([user.id])} GROUP BY t.id ORDER BY COUNT(*) DESC LIMIT 5`,
 			user.id
 		) as { artist: string; title: string }[];
 

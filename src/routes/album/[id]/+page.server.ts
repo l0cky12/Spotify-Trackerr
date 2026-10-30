@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { all, get } from '#lib/server/db.js';
-import { entityPage, setImage } from '#lib/server/entity.js';
+import { entityPage, setBan, setImage } from '#lib/server/entity.js';
 import { userClause } from '#lib/server/stats.js';
 
 export const load: PageServerLoad = (event) => {
@@ -14,4 +14,4 @@ export const load: PageServerLoad = (event) => {
 	return { ...e, image: e.row.image_override ?? e.row.image, artist, tracks };
 };
 
-export const actions = { image: (e) => setImage(e, 'album') } satisfies Actions;
+export const actions = { image: (e) => setImage(e, 'album'), ban: (e) => setBan(e, 'album', true), unban: (e) => setBan(e, 'album', false) } satisfies Actions;

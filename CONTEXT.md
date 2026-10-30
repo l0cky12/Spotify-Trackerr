@@ -28,6 +28,10 @@ _Avoid_: reauth, expired, broken
 One listen of a song by one person: which song, when it ended, how long it ran, and whether it came from an import or a sync. Every stat is counted from plays, so fixing a play (its song or its time) fixes every page.
 _Avoid_: scrobble, listen (as a noun), stream
 
+**Ban**:
+A song, album or artist a person chose to hide. Their plays of it stay saved but are left out of every stat, list, chart, history page, search and recommendation until they unban it. A ban is the owner's: it hides their own plays from anyone looking, and someone else's plays of the same artist still count for that person.
+_Avoid_: block, mute, hide (as the feature's name), blacklist
+
 **Report**:
 A person's listening for one calendar month or year, with the change from the period before.
 _Avoid_: recap, summary, wrapped (that's the Year in review page)

@@ -1,4 +1,5 @@
 import { all, get } from './db.js';
+import { notBanned } from './bans.js';
 import { localizer, monthName, fromLocal, dayLabel, periodId, parsePeriod } from '../time.js';
 
 export type Kind = 'track' | 'album' | 'artist';
@@ -7,8 +8,8 @@ export type Sort = 'plays' | 'minutes' | 'last' | 'first';
 export const SORTS: Sort[] = ['plays', 'minutes', 'last', 'first'];
 export type Scope = { ids: number[]; since: number; until: number; rankBy: 'plays' | 'minutes'; tz: string; sort?: Sort };
 
-// ids are integers we resolved server-side, so inlining them is safe.
-const users = (ids: number[]) => `p.user_id IN (${ids.map((n) => Math.trunc(n)).join(',') || 'NULL'})`;
+// ids are integers we resolved server-side, so inlining them is safe. Banned songs, albums and artists drop out here, so every stat skips them.
+const users = (ids: number[]) => `(p.user_id IN (${ids.map((n) => Math.trunc(n)).join(',') || 'NULL'})${notBanned(ids)})`;
 const order = (rankBy: string) => (rankBy === 'minutes' ? 'ms DESC, plays DESC' : 'plays DESC, ms DESC');
 const ORDERS: Record<Sort, string> = { plays: 'plays DESC, ms DESC', minutes: 'ms DESC, plays DESC', last: 'last DESC, plays DESC', first: 'first DESC, plays DESC' };
 const sortOrder = (s: Scope) => ORDERS[s.sort ?? s.rankBy];
