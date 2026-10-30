@@ -19,6 +19,8 @@ export type Rec = {
 	image?: string | null;
 	/** The seed artist or song this pick came from. */
 	why?: string;
+	/** The seed song's artist, when `why` is a song. */
+	whyBy?: string;
 	trackId?: number | null;
 	albumId?: number | null;
 	artistId?: number | null;
@@ -285,7 +287,7 @@ export async function buildDiscover(user: Row) {
 	), memory, found);
 	const [songs, newAlbums] = await Promise.all([
 		unheard(interleave(
-			await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title })))),
+			await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title, whyBy: s.artist })))),
 			songKey,
 			MAX_PICKS
 		), memory, found),

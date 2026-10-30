@@ -20,13 +20,15 @@ const start = await import('../../routes/auth/lastfm/+server.js');
 const callback = await import('../../routes/auth/lastfm/callback/+server.js');
 const settings = await import('../../routes/settings/+page.server.js');
 const discover = await import('../../routes/discover/+page.server.js');
+const ingest = await import('./ingest.js');
+const bans = await import('./bans.js');
 const { getJson, deezerStep } = await import('./enrich.js');
 let testTime = Date.parse('2026-10-02T00:00:00Z');
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(testTime += 60_000);
-  for (const table of ['plays', 'sessions', 'cache', 'tracks', 'albums', 'artist_genres', 'artists', 'users']) db.run(`DELETE FROM ${table}`);
+  for (const table of ['bans', 'plays', 'sessions', 'cache', 'tracks', 'albums', 'artist_genres', 'artists', 'users']) db.run(`DELETE FROM ${table}`);
   db.run("INSERT INTO users (id, display_name, created_at, lastfm_user) VALUES (1, 'Alice', 0, 'alice-fm')");
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -201,6 +203,22 @@ test('invalidates picks after unlink and linking another account', async () => {
   const linked = discover.load({ locals: { user: user() } } as never) as any;
   expect(linked.lastfmUser).toBe('bob-fm');
   expect(linked.picks).toBeNull();
+});
+
+test('albums and songs say which seed they are like, until that seed is banned', async () => {
+  fakeFetch();
+  await finish(recs.buildDiscover(user()));
+  const shown = () => (discover.load({ locals: { user: user() } } as never) as any).picks;
+  expect(shown().artists.map((a: any) => [a.artist, a.why])).toEqual([['New Band', 'Seed']]);
+  expect(shown().albums.map((a: any) => [a.album, a.why])).toEqual([['Debut', 'Seed']]);
+  expect(shown().songs.map((s: any) => [s.title, s.why, s.whyBy])).toEqual([['Fresh', 'Seed Song', 'Seed']]);
+  const seed = ingest.upsertArtist('Seed');
+  bans.ban(1, 'track', ingest.upsertTrack(seed, null, 'Seed Song').id);
+  expect(shown().songs[0].why).toBeUndefined();
+  expect(shown().albums[0].why).toBe('Seed');
+  bans.ban(1, 'artist', seed);
+  expect([shown().artists[0].why, shown().albums[0].why]).toEqual([undefined, undefined]);
+  expect(shown().songs.map((s: any) => s.title)).toEqual(['Fresh']);
 });
 
 test('rejects linking after the Trackerr account changes', async () => {

@@ -5,13 +5,17 @@ import { lastfmApp } from '#lib/server/connections.js';
 import { get } from '#lib/server/db.js';
 import { bannedIds, bannedKeys, recBanned, type Banned } from '#lib/server/bans.js';
 
+type Keys = ReturnType<typeof bannedKeys>;
+// The seed a pick says it's like, unless that seed has been banned since.
+const seedBanned = (r: Rec, keys: Keys) => !!r.why && (r.title ? !!r.whyBy && keys.song(r.whyBy, r.why) : keys.artist(r.why));
 // Saved picks are filtered as they're shown, so a ban made since the last refresh still takes them out.
-const withUrl = (l: Rec[], banned: Banned) => l.filter((r) => !recBanned(banned, r)).map((r) => ({ ...r, url: spotifySearchUrl(r) }));
+const withUrl = (l: Rec[], banned: Banned, keys: Keys) =>
+	l.filter((r) => !recBanned(banned, r)).map((r) => ({ ...r, why: seedBanned(r, keys) ? undefined : r.why, url: spotifySearchUrl(r) }));
 
 export const load: PageServerLoad = ({ locals }) => {
 	const saved = savedDiscover(locals.user!.id);
 	const banned = bannedIds(locals.user!.id);
-	const bannedArtist = bannedKeys(locals.user!.id).artist;
+	const keys = bannedKeys(locals.user!.id);
 	return {
 		enabled: !!lastfmApp(),
 		lastfmUser: locals.user!.lastfm_user as string | null,
@@ -19,10 +23,10 @@ export const load: PageServerLoad = ({ locals }) => {
 		checking: get('SELECT COUNT(*) n FROM tracks WHERE credits_done = 0 AND spotify_id IS NOT NULL')!.n as number,
 		picks: saved && {
 			...saved,
-			seeds: saved.seeds.filter((s) => !bannedArtist(s)),
-			artists: withUrl(saved.artists, banned),
-			albums: withUrl(saved.albums, banned),
-			songs: withUrl(saved.songs, banned)
+			seeds: saved.seeds.filter((s) => !keys.artist(s)),
+			artists: withUrl(saved.artists, banned, keys),
+			albums: withUrl(saved.albums, banned, keys),
+			songs: withUrl(saved.songs, banned, keys)
 		}
 	};
 };
