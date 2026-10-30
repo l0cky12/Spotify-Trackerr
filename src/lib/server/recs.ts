@@ -93,6 +93,18 @@ async function deezerImage(r: Rec): Promise<string | null> {
 	}).catch(() => null);
 }
 
+const AI_LIST = 'https://raw.githubusercontent.com/xoundbyte/soul-over-ai/main/dist/artists.json';
+
+/** Artists Soul Over AI lists as making AI music, fetched daily; the last good copy when GitHub can't be reached. */
+async function aiArtists(): Promise<Set<string>> {
+	const names: string[] = await cached('ai:artists', 86400, async () => {
+		const list = await getJson(AI_LIST);
+		if (!Array.isArray(list)) throw new Error('Soul Over AI did not return a list.');
+		return list.filter((a: any) => !a?.removed && validName(a?.name)).map((a: any) => loose(a.name));
+	}).catch(() => JSON.parse(get('SELECT value FROM cache WHERE key = ?', 'ai:artists')?.value ?? '[]'));
+	return new Set(names);
+}
+
 // A remembered "not played yet" is asked again after this long, and sooner if the scrobbles since name its artist.
 const HEARD_TTL = 7 * 86400;
 // Scrobbles can arrive late (offline phones), so the scrobbles checked reach back this far before the last check.
@@ -228,6 +240,7 @@ function topLocal(sql: string, userId: number) {
  * else their ListenBrainz ones when they've signed in there, otherwise what they played most here.
  */
 export async function buildDiscover(user: Row) {
+	const aiList = aiArtists();
 	let seedArtists: string[] = [];
 	let seedSongs: { artist: string; title: string }[] = [];
 	if (user.lastfm_user) {
@@ -270,6 +283,9 @@ export async function buildDiscover(user: Row) {
 	const isHeardArtist = (name: string) => members(name).some((m) => heardArtists.has(loose(m)));
 	const songKey = (r: { artist: string; title?: string }) => loose(r.artist) + '\0' + bareTitle(r.title ?? '');
 	const heardSongs = new Set([...seedSongs, ...credited].map(songKey));
+	// ponytail: matched by name, so a real artist sharing an AI artist's name is left out too; match Spotify IDs if that bites.
+	const ai = await aiList;
+	const isAi = (name: string) => members(name).some((m) => ai.has(loose(m)));
 
 	const memory = user.lastfm_user ? await rememberedPlays(user.lastfm_user) : null;
 	// Each pick's cover loads as soon as the pick is kept, while Last.fm checks the rest.
@@ -281,20 +297,20 @@ export async function buildDiscover(user: Row) {
 
 	// Artists first: songs and albums by an artist Last.fm says the user never played need no check of their own.
 	const artists = await unheard(interleave(
-		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s, PER_SEED)).filter((r) => !isHeardArtist(r.artist)).map((r) => ({ ...r, why: s })))),
+		await Promise.all(seedArtists.map(async (s) => (await similarArtists(s, PER_SEED)).filter((r) => !isHeardArtist(r.artist) && !isAi(r.artist)).map((r) => ({ ...r, why: s })))),
 		(r) => loose(r.artist),
 		MAX_PICKS
 	), memory, found);
 	const [songs, newAlbums] = await Promise.all([
 		unheard(interleave(
-			await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r))).map((r) => ({ ...r, why: s.title, whyBy: s.artist })))),
+			await Promise.all(seedSongs.map(async (s) => (await similarTracks(s.artist, s.title, PER_SEED)).filter((r) => !heardSongs.has(songKey(r)) && !isAi(r.artist)).map((r) => ({ ...r, why: s.title, whyBy: s.artist })))),
 			songKey,
 			MAX_PICKS
 		), memory, found),
 		// Each new artist's best-known album, checked on its own: Last.fm may file it under another spelling of the artist.
 		Promise.all(artists.map(async (a) => {
 			const al = await topAlbum(a.artist);
-			if (!al || (al.albumId && get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId))) return [];
+			if (!al || isAi(al.artist) || (al.albumId && get('SELECT 1 FROM plays WHERE user_id = ? AND album_id = ? LIMIT 1', user.id, al.albumId))) return [];
 			return unheard([{ ...al, why: a.why }], memory, found);
 		})).then((albums) => albums.flat())
 	]);

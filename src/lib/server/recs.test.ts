@@ -85,3 +85,32 @@ test('Discover treats spelling and version differences of a played artist or son
 	expect(bareTitle('(Intro)')).not.toBe('');
 	expect(bareTitle('Song A')).not.toBe(bareTitle('Song B'));
 });
+
+test('Discover leaves out artists Soul Over AI lists as AI-made, alone or in a collaboration', async () => {
+	process.env.LASTFM_API_KEY = 'k';
+	const db = await import('./db.js');
+	const { buildDiscover } = await import('./recs.js');
+	db.run("INSERT INTO users (id, display_name, created_at, lastfm_user) VALUES (3, 'c', 0, 'ai-me')");
+	const lastfm: Record<string, unknown> = {
+		'user.gettopartists': { topartists: { artist: [{ name: 'AI Seed' }] } },
+		'user.gettoptracks': { toptracks: { track: [{ name: 'AI Seed Song', artist: { name: 'AI Seed' } }] } },
+		'artist.getsimilar': { similarartists: { artist: [{ name: 'The Velvet Sundown' }, { name: 'Real Band' }, { name: 'Old AI' }] } },
+		'track.getsimilar': { similartracks: { track: [{ name: 'Fake', artist: { name: 'Real Band & The Velvet Sundown' }, match: '1' }, { name: 'True', artist: { name: 'Real Band' }, match: '1' }] } },
+		'artist.getInfo': { artist: { stats: { userplaycount: '0' } } },
+		'track.getInfo': { track: { userplaycount: '0' } },
+		'album.getInfo': { album: { userplaycount: '0' } },
+		'artist.gettopalbums': { topalbums: { album: [] } }
+	};
+	vi.stubGlobal('fetch', async (url: string) => {
+		const u = new URL(url);
+		const body =
+			u.host === 'raw.githubusercontent.com'
+				? [{ name: 'The Velvet Sundown', removed: false }, { name: 'Old AI', removed: true }]
+				: u.host === 'ws.audioscrobbler.com' ? lastfm[u.searchParams.get('method')!] : { data: [] };
+		return new Response(JSON.stringify(body));
+	});
+	const r = await buildDiscover(db.get('SELECT * FROM users WHERE id = 3'));
+	vi.unstubAllGlobals();
+	expect(r.artists.map((a) => a.artist)).toEqual(['Real Band', 'Old AI']);
+	expect(r.songs.map((s) => s.title)).toEqual(['True']);
+});
