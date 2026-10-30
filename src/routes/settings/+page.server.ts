@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { all, get, run, setting, setSetting } from '#lib/server/db.js';
-import { checkPassword, createUser, endSession, hashPassword, validUsername } from '#lib/server/auth.js';
+import { apiTokensOf, checkPassword, createApiToken, createUser, endSession, hashPassword, revokeApiToken, validUsername } from '#lib/server/auth.js';
 import {
 	checkLastfmApp,
 	connectionStatus,
@@ -48,6 +48,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		listenbrainzLogin: listenbrainzLoginEnabled(),
 		listenbrainzCallback: `${url.origin}/auth/listenbrainz/callback`,
 		callback: `${url.origin}/auth/spotify/callback`,
+		mcpUrl: `${url.origin}/mcp`,
+		apiTokens: apiTokensOf(u.id),
 		imports: all('SELECT * FROM imports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', u.id),
 		bans: bansOf(u.id),
 		pending: get('SELECT COUNT(*) n FROM tracks WHERE enriched != 1')!.n as number,
@@ -99,6 +101,15 @@ export const actions = {
 		}
 		run('UPDATE users SET avatar = ? WHERE id = ?', value, locals.user!.id);
 		return { section: 'prefs', saved: true };
+	},
+	/** A new MCP access key, shown once in the result. */
+	createKey: async ({ request, locals }) => {
+		const name = String((await request.formData()).get('name') ?? '');
+		return { section: 'mcp', token: createApiToken(locals.user!.id, name) };
+	},
+	revokeKey: async ({ request, locals }) => {
+		revokeApiToken(locals.user!.id, Number((await request.formData()).get('id')));
+		return { section: 'mcp', saved: true };
 	},
 	unban: async ({ request, locals }) => {
 		const f = await request.formData();

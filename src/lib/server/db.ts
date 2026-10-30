@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS users (
 	own_client_secret TEXT,
 	lastfm_user TEXT,
 	listenbrainz_user TEXT,
+	home_location TEXT,
+	show_miles INTEGER NOT NULL DEFAULT 100,
 	created_at INTEGER NOT NULL
 );
 
@@ -148,6 +150,40 @@ CREATE TABLE IF NOT EXISTS bans (
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (user_id, kind, item_id)
 );
+
+-- Artists a person wants to hear about shows for, and the shows an AI assistant found for them over MCP. See shows.ts.
+CREATE TABLE IF NOT EXISTS watches (
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	artist_id INTEGER NOT NULL REFERENCES artists,
+	created_at INTEGER NOT NULL,
+	PRIMARY KEY (user_id, artist_id)
+);
+-- date is the venue's local date (YYYY-MM-DD); city_key is the matching key of the city's first part, so the same
+-- show found twice with a differently written venue or state is still one show. seen = 0 until the person opens Shows.
+CREATE TABLE IF NOT EXISTS shows (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	artist_id INTEGER NOT NULL REFERENCES artists,
+	date TEXT NOT NULL,
+	venue TEXT NOT NULL,
+	city TEXT NOT NULL,
+	city_key TEXT NOT NULL,
+	url TEXT,
+	note TEXT,
+	found_at INTEGER NOT NULL,
+	seen INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (user_id, artist_id, date, city_key)
+);
+
+-- Access keys for the MCP server (/mcp); only a hash is kept. See auth.ts.
+CREATE TABLE IF NOT EXISTS api_tokens (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	token_hash TEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	last_used_at INTEGER
+);
 `);
 
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to an existing database.
@@ -161,6 +197,9 @@ if (!db.prepare("SELECT 1 FROM settings WHERE key = 'time_unit_auto'").get()) {
 }
 // Profile picture: an /img/ upload or one of the person's top-artist pictures (see settings).
 if (!userColumns.includes('avatar')) db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
+// Where the person lives and how far they'd travel, for finding shows near them.
+if (!userColumns.includes('home_location')) db.exec('ALTER TABLE users ADD COLUMN home_location TEXT');
+if (!userColumns.includes('show_miles')) db.exec('ALTER TABLE users ADD COLUMN show_miles INTEGER NOT NULL DEFAULT 100');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');

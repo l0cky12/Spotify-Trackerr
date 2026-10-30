@@ -32,6 +32,11 @@ recommendation picks. No personal listening data or real connected accounts are 
   recorded history, using Last.fm recommendations. Connect Last.fm or ListenBrainz in Settings
   to use your top artists and songs from those services; otherwise it uses your local history.
   Last.fm is preferred, with ListenBrainz and local history as fallbacks when needed.
+- **Hear when artists you love play near you.** Choose *Watch for shows* on an artist's page, set
+  where you live and how far you'd travel on the Shows page, then connect an AI assistant (Claude
+  or any MCP app) in Settings → AI assistant. The assistant reads your watched artists, searches
+  for their concerts near you, and saves what it finds to Shows. New shows get a badge in the menu,
+  and the assistant tells you only about shows it hasn't reported before.
 - **Ban what you don't want to see.** Ban a song, album, or artist from its page and it
   disappears from your stats, top lists, charts, history, search, and recommendations. The plays
   stay saved: unban it from the page or from Settings → Banned and everything comes back.
@@ -78,6 +83,15 @@ with a pause per developer app, and add automated build, browser, and security c
 
 See the [artist](docs/screenshots/artist.png), [album](docs/screenshots/album.png), and
 [top artists](docs/screenshots/top-artists.png) pages too.
+
+</details>
+
+<details>
+<summary>Shows: watched artists, your home, and concerts an AI assistant found near you</summary>
+
+![Shows page with two new shows, your home and travel distance, and the artists you watch](docs/screenshots/shows.png)
+
+![Settings → AI assistant with a new access key and setup commands](docs/screenshots/settings-ai-assistant.png)
 
 </details>
 
@@ -150,11 +164,103 @@ https name.
    MusicBrainz account in *Settings > ListenBrainz*. Discover still requires the Last.fm API key
    to generate recommendations. Connecting either service does not import its plays into your
    listening history.
-5. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
+5. **AI assistant (optional).** Each person makes an access key in *Settings > AI assistant*, which
+   shows the commands to add this app's MCP server (`https://<your address>/mcp`) to Claude Code or
+   another MCP app. The assistant must be able to reach that address: local apps can use the
+   Tailscale name, but cloud apps such as claude.ai need the Cloudflare Tunnel hostname. Ask it to
+   check for shows near you, or run that request on a schedule to get alerts.
+6. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
    and upload the zip in Settings when it arrives (up to 30 days).
 
 Spotify ends each link 6 months after sign-in. The app warns two weeks ahead; click
 *Reconnect Spotify* to renew.
+
+## Shows near you
+
+Trackerr can tell you when artists you love are playing near you. The app keeps your list of
+watched artists and where you live. An AI assistant that you connect does the searching: it reads
+your list over MCP (Model Context Protocol), looks up each artist's tour dates on the web, and
+saves the shows it finds back to Trackerr.
+
+```text
+You watch artists ──▶ Trackerr ◀──MCP──▶ AI assistant ──▶ web search for tour dates
+                         │                    │
+                Shows page + badge     tells you about new shows
+```
+
+Trackerr doesn't search for concerts on its own, and it doesn't send emails or phone
+notifications. You hear about a show in two places:
+
+- **In the assistant.** After each check, it tells you which shows are new. It doesn't repeat shows
+  it has already reported.
+- **In Trackerr.** New shows get a badge on **Shows** in the menu until you open that page.
+
+### Set it up
+
+1. **Watch some artists.** Open an artist's page and choose **Watch for shows**, or add one of
+   your top artists on the **Shows** page. You can watch artists you haven't played yet by asking
+   your assistant.
+2. **Set your home.** On the **Shows** page, enter where you live (for example, `New Orleans, LA`)
+   and how many miles you'd travel. Only you and your assistant can see these.
+3. **Make an access key.** Go to **Settings → AI assistant**, name the key (for example,
+   `Claude`), and choose **Make an access key**. Copy the key right away; it is shown only once.
+4. **Add Trackerr to your assistant.** The Settings page shows ready-to-paste setup for your key:
+
+   - **Claude Code:**
+
+     ```sh
+     claude mcp add --transport http trackerr https://<your address>/mcp --header "Authorization: Bearer <your key>"
+     ```
+
+   - **Apps with an MCP settings file:** add an HTTP server with the address
+     `https://<your address>/mcp` and the header `Authorization: Bearer <your key>`.
+   - **Apps that only take an address,** such as a claude.ai custom connector: use
+     `https://<your address>/mcp?key=<your key>`. Treat this address like a password.
+
+   Your assistant must be able to reach the address. Apps on your own devices can use your
+   Tailscale address. Cloud apps such as claude.ai need the public Cloudflare Tunnel address.
+
+### Use it
+
+Ask your assistant something like:
+
+> Check Trackerr for shows near me by the artists I watch. Save any you find and tell me which
+> ones are new.
+
+Other things you can ask:
+
+- "Which of my top artists am I not watching yet? Watch the top five."
+- "Start watching Big Thief."
+- "I'm moving to Austin, TX. I'll drive up to 200 miles for a show."
+
+To get alerts without asking, schedule that first request to run weekly in your assistant, if it
+supports scheduled tasks. Your assistant's own notification settings decide whether you get a
+notification when it finishes.
+
+Shows you don't want can be removed from the **Shows** page. Past shows disappear on their own.
+
+### What the assistant can do
+
+| Tool | What it does |
+|---|---|
+| `get_show_watchlist` | Reads your watched artists, home, travel distance, today's date, and shows already saved. |
+| `save_shows` | Saves shows it found and reports which are new, already saved, or rejected. |
+| `watch_artist` / `unwatch_artist` | Adds or removes an artist on your watchlist. |
+| `set_home` | Changes where you live and how far you'd travel. |
+| `top_artists` | Lists your most played artists, so it can suggest who to watch. |
+
+A key works only for the person who made it. It can't read your listening history or change
+anything else. Trackerr refuses shows with past or invalid dates, missing venues or cities, and
+artists you don't watch. The same artist, date, and city counts as one show, even if the venue is
+written differently. Revoke a key in **Settings → AI assistant** to cut off any assistant using it.
+
+### If it doesn't work
+
+- **401 Unauthorized:** the key is wrong or was revoked. Make a new one.
+- **421 Misdirected Request:** add the address the assistant uses to `ALLOWED_HOSTS`.
+- **The assistant can't connect:** check that it can reach the address from where it runs.
+- **No shows found:** the assistant needs web search turned on. Check that your home is set on
+  the **Shows** page.
 
 ## How it counts
 

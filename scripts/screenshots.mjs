@@ -17,11 +17,14 @@ const outputDir = 'docs/screenshots';
 const snapshot = new Date('2026-10-29T12:00:00Z');
 const now = snapshot.getTime() / 1000;
 const preload = join(dataDir, 'offline.mjs');
+// The demo clock starts at the snapshot and keeps ticking: a frozen Date.now() would leave the Last.fm request queue waiting forever.
 writeFileSync(preload, `
 const RealDate = Date;
+const started = RealDate.now();
+const demoNow = () => ${snapshot.getTime()} + (RealDate.now() - started);
 globalThis.Date = class extends RealDate {
-  constructor(...args) { super(...(args.length ? args : [${snapshot.getTime()}])); }
-  static now() { return ${snapshot.getTime()}; }
+  constructor(...args) { super(...(args.length ? args : [demoNow()])); }
+  static now() { return demoNow(); }
 };
 globalThis.fetch = async () => new Response('Offline screenshot demo', { status: 503 });
 `);
@@ -117,6 +120,16 @@ try {
 		albums: picks.map(({ artist, album, image, why }) => ({ artist, album, image, why })),
 		songs: picks.map(({ artist, title, image, why, seedSong }) => ({ artist, title, image, why: seedSong, whyBy: why }))
 	}), now);
+	// Watched artists, a home, an access key, and shows an assistant "found" (fictional venues; demo clock is Oct 29, 2026).
+	db.prepare("UPDATE users SET home_location = 'Portland, OR', show_miles = 150 WHERE id = 1").run();
+	for (const id of [1, 2, 3, 5, 9]) db.prepare('INSERT INTO watches VALUES (1, ?, ?)').run(id, now - id * 86400);
+	db.prepare('INSERT INTO api_tokens (user_id, token_hash, name, created_at, last_used_at) VALUES (1, ?, ?, ?, ?)')
+		.run(createHash('sha256').update('trk_demo').digest('hex'), 'Claude Code', now - 20 * 86400, now - 3600);
+	const show = db.prepare('INSERT INTO shows (user_id, artist_id, date, venue, city, city_key, url, note, found_at, seen) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	show.run(1, '2026-11-14', 'The Lantern Room', 'Portland, OR', 'portland', 'https://example.com/juniper-arcade', 'With Low Tide Club', now - 7200, 0);
+	show.run(3, '2026-12-05', 'Harbor Hall', 'Seattle, WA', 'seattle', 'https://example.com/orchard-lines', '175 miles from home', now - 7200, 0);
+	show.run(2, '2027-01-23', 'Riverside Ballroom', 'Portland, OR', 'portland', 'https://example.com/paper-satellites', 'Tickets on sale Nov 6', now - 9 * 86400, 1);
+	show.run(5, '2027-02-11', 'Old Mill Theatre', 'Eugene, OR', 'eugene', 'https://example.com/sunday-static', null, now - 9 * 86400, 1);
 	db.exec('COMMIT');
 	assert(db.prepare('SELECT COUNT(*) n FROM plays').get().n > 10000, 'Demo history is empty');
 	db.close(); db = undefined;
@@ -172,6 +185,15 @@ try {
 	await capture('discover.png', '/discover', 'Discover');
 	await expect(page.getByRole('heading', { name: 'Artists', exact: false })).toBeVisible();
 	await capture('people.png', '/people', 'People');
+	// Opening Shows marks its shows seen, so the badge in the menu is captured on the pages before it.
+	await capture('shows.png', '/shows', 'Shows');
+	await expect(page.getByText('New', { exact: true })).toHaveCount(2);
+	await page.goto('/settings?section=mcp');
+	await page.getByLabel('Key name').fill('Claude');
+	await page.getByRole('button', { name: 'Make an access key', exact: true }).click();
+	await expect(page.getByText("Your new access key. Copy it now; it won't be shown again.")).toBeVisible();
+	await page.screenshot({ path: join(outputDir, 'settings-ai-assistant.png'), fullPage: true, animations: 'disabled' });
+	console.log('Captured settings-ai-assistant.png');
 	await capture('settings.png', '/settings?section=lastfm', 'Settings');
 	await capture('settings-listenbrainz.png', '/settings?section=listenbrainz', 'Settings');
 	await capture('settings-preferences.png', '/settings?section=prefs', 'Settings');

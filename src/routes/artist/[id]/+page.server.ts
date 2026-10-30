@@ -5,6 +5,7 @@ import { bannedIds, recBanned } from '#lib/server/bans.js';
 import { top } from '#lib/server/stats.js';
 import { similarArtists, spotifySearchUrl } from '#lib/server/recs.js';
 import { lastfmApp } from '#lib/server/connections.js';
+import { unwatch, upcomingShows, watch, watching } from '#lib/server/shows.js';
 
 export const load: PageServerLoad = (event) => {
 	const e = entityPage(event, 'artist');
@@ -17,6 +18,9 @@ export const load: PageServerLoad = (event) => {
 		tracks: top('track', scope, 15, 0, filter),
 		albums: top('album', scope, 12, 0, filter),
 		lastfm: !!lastfmApp(),
+		// Watching is the viewer's own, so it's left off when looking at someone else's stats.
+		watching: e.view.readonly ? null : watching(event.locals.user!.id, e.id),
+		shows: e.view.readonly ? [] : upcomingShows(event.locals.user!.id, e.view.tz, e.id),
 		similar: similarArtists(e.row.name).then((l) => {
 			const banned = bannedIds(event.locals.user!.id);
 			return l.filter((r) => !recBanned(banned, r)).map((r) => ({ ...r, url: r.artistId ? '' : spotifySearchUrl(r) }));
@@ -24,4 +28,13 @@ export const load: PageServerLoad = (event) => {
 	};
 };
 
-export const actions = { image: (e) => setImage(e, 'artist'), ban: (e) => setBan(e, 'artist', true), unban: (e) => setBan(e, 'artist', false) } satisfies Actions;
+export const actions = {
+	image: (e) => setImage(e, 'artist'),
+	ban: (e) => setBan(e, 'artist', true),
+	unban: (e) => setBan(e, 'artist', false),
+	watch: ({ params, locals }) => ({ watching: watch(locals.user!.id, Number(params.id)) }),
+	unwatch: ({ params, locals }) => {
+		unwatch(locals.user!.id, Number(params.id));
+		return { watching: false };
+	}
+} satisfies Actions;

@@ -39,3 +39,17 @@ _Avoid_: recap, summary, wrapped (that's the Year in review page)
 **Template**:
 A saved recipe for a Spotify playlist built from a person's own plays (top songs of a period, an artist as first heard, on this day across the years).
 _Avoid_: preset, generator, smart playlist
+
+### Shows
+
+**Watched artist**:
+An artist a person wants to hear about concerts for. Private to that person, and independent of whether they've played the artist here.
+_Avoid_: favorite, followed (Spotify's own follow), monitored, tracked
+
+**Show**:
+One upcoming concert by a watched artist (date, venue, city) that the person's AI assistant found and saved. It's "new" until the person opens the Shows page. Same artist, date and city means the same show.
+_Avoid_: event, gig, concert (as the feature's name), alert
+
+**Access key**:
+A secret a person makes in Settings so an AI assistant can use this server's MCP endpoint as them. Only its hash is stored, and it can be revoked.
+_Avoid_: API token, PAT, password

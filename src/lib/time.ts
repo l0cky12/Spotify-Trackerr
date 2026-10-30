@@ -109,6 +109,10 @@ export function formatDate(ts: number, tz: string) {
 }
 
 /** Fixed units for showing time listened, in ms; a month is the average month (365.25 / 12 days). */
+/** A show's calendar date (YYYY-MM-DD, the venue's own day) as 'Sat, Nov 14, 2026', without shifting it into a time zone. */
+export const formatShowDate = (d: string) =>
+	new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
 export const TIME_UNITS = { minutes: 60000, hours: 3600000, days: 86400000, months: 2629800000 };
 /** 'auto' picks a unit per figure (see formatListened); the rest show every figure in that one unit. */
 export type TimeUnit = keyof typeof TIME_UNITS | 'auto';

@@ -6,7 +6,8 @@ import { startJobs } from '#lib/server/jobs.js';
 
 if (!building) startJobs();
 
-const PUBLIC = ['/login', '/auth/'];
+// /mcp signs in with an access key of its own instead of the session cookie.
+const PUBLIC = ['/login', '/auth/', '/mcp'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = userFromSession(event.cookies.get('session'));
