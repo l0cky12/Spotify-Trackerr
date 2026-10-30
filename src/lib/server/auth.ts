@@ -44,7 +44,7 @@ export const signupOpen = () => userCount() === 0 || setting('allow_signup') ===
 export function createUser(fields: { username?: string | null; password?: string | null; display_name: string; timezone?: string }) {
 	const isAdmin = userCount() === 0 ? 1 : 0;
 	const r = run(
-		'INSERT INTO users (username, password_hash, display_name, is_admin, timezone, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+		"INSERT INTO users (username, password_hash, display_name, is_admin, timezone, time_unit, created_at) VALUES (?, ?, ?, ?, ?, 'auto', ?)",
 		fields.username ?? null,
 		fields.password ? hashPassword(fields.password) : null,
 		fields.display_name,

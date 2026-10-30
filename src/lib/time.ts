@@ -108,6 +108,30 @@ export function formatDate(ts: number, tz: string) {
 	return new Date(ts * 1000).toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/** Units for showing time listened, in ms; a month is the average month (365.25 / 12 days). */
+/** Fixed units for showing time listened, in ms; a month is the average month (365.25 / 12 days). */
 export const TIME_UNITS = { minutes: 60000, hours: 3600000, days: 86400000, months: 2629800000 };
-export type TimeUnit = keyof typeof TIME_UNITS;
+/** 'auto' picks a unit per figure (see formatListened); the rest show every figure in that one unit. */
+export type TimeUnit = keyof typeof TIME_UNITS | 'auto';
+export const TIME_UNIT_CHOICES: TimeUnit[] = ['auto', 'minutes', 'hours', 'days', 'months'];
+
+// Auto steps up a unit once a figure reaches 2 of the next one, so numbers stay short: at most 119 min, 47 hours, 59 days, 23 months.
+const AUTO_STEPS = [
+	{ label: 'min', ms: TIME_UNITS.minutes, below: 120 },
+	{ label: 'hours', ms: TIME_UNITS.hours, below: 48 },
+	{ label: 'days', ms: TIME_UNITS.days, below: 60 },
+	{ label: 'months', ms: TIME_UNITS.months, below: 24 },
+	{ label: 'years', ms: TIME_UNITS.months * 12, below: Infinity }
+];
+
+/** Time listened with its unit, like '47 min' or '3.2 days'. Minutes are whole; other figures keep one decimal under 10. */
+export function formatListened(ms: number, unit: TimeUnit) {
+	const show = (n: number, decimals: number) => n.toLocaleString('en-US', { maximumFractionDigits: decimals });
+	if (unit !== 'auto') return `${show(ms / TIME_UNITS[unit], unit === 'minutes' ? 0 : 1)} ${unit === 'minutes' ? 'min' : unit}`;
+	for (const step of AUTO_STEPS) {
+		const n = ms / step.ms;
+		const decimals = step.label === 'min' || n >= 10 ? 0 : 1;
+		// Compare the rounded figure, so 119.7 min reads as '2 hours' rather than '120 min'.
+		if (Number(n.toFixed(decimals)) < step.below) return `${show(n, decimals)} ${step.label}`;
+	}
+	return '';
+}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Cover from './Cover.svelte';
-	import { u, fmt, listened, timeUnit } from '#lib/nav.js';
+	import { u, fmt, listened } from '#lib/nav.js';
 
 	type Item = { id: number; name: string; artist?: string | null; image?: string | null; plays: number; ms: number };
 	let { track, album, artist, rankBy = 'plays' }: { track?: Item; album?: Item; artist?: Item; rankBy?: string } = $props();
@@ -21,8 +21,8 @@
 				<span class="name">{s.item?.name ?? 'Nothing yet'}</span>
 				{#if s.item?.artist}<span class="by">{s.item.artist}</span>{/if}
 				{#if s.item}
-					<span class="count"><span class="big">{rankBy === 'minutes' ? listened(s.item.ms) : fmt(s.item.plays)}</span> {rankBy === 'minutes' ? timeUnit() : 'plays'}</span>
-					<span class="by">{rankBy === 'minutes' ? `${fmt(s.item.plays)} plays` : `${listened(s.item.ms)} ${timeUnit()}`}</span>
+					<span class="count">{#if rankBy === 'minutes'}<span class="big">{listened(s.item.ms)}</span>{:else}<span class="big">{fmt(s.item.plays)}</span> plays{/if}</span>
+					<span class="by">{rankBy === 'minutes' ? `${fmt(s.item.plays)} plays` : listened(s.item.ms)}</span>
 				{/if}
 			</div>
 		</a>

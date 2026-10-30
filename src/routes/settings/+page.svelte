@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { formatWhen, formatDate, TIME_UNITS } from '#lib/time.js';
+	import { formatWhen, formatDate, TIME_UNIT_CHOICES } from '#lib/time.js';
 	import { fmt } from '#lib/nav.js';
 	import Cover from '#lib/components/Cover.svelte';
 
@@ -174,7 +174,7 @@
 	<label>
 		Show time listened in
 		<select name="time_unit" value={data.u.timeUnit}>
-			{#each Object.keys(TIME_UNITS) as unit (unit)}<option value={unit}>{unit[0].toUpperCase() + unit.slice(1)}</option>{/each}
+			{#each TIME_UNIT_CHOICES as unit (unit)}<option value={unit}>{unit === 'auto' ? 'Auto (bigger units as the time grows)' : unit[0].toUpperCase() + unit.slice(1)}</option>{/each}
 		</select>
 	</label>
 	<label class="inline"><input type="checkbox" name="public" checked={data.u.public} /> Let other people on this server see my listening</label>

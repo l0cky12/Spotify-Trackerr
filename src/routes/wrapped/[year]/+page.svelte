@@ -3,7 +3,7 @@
 	import BarList from '#lib/components/BarList.svelte';
 	import Columns from '#lib/components/Columns.svelte';
 	import Calendar from '#lib/components/Calendar.svelte';
-	import { u, fmt, listened, timeUnit } from '#lib/nav.js';
+	import { u, fmt, listened } from '#lib/nav.js';
 	import { monthName } from '#lib/time.js';
 
 	let { data } = $props();
@@ -32,7 +32,7 @@
 	<p class="muted">No plays in {data.year}.</p>
 {:else}
 	<dl class="headline">
-		<div><dt>{timeUnit()} listened</dt><dd>{listened(data.totals.ms)}</dd></div>
+		<div><dt>time listened</dt><dd>{listened(data.totals.ms)}</dd></div>
 		<div><dt>plays</dt><dd>{fmt(data.totals.plays)}</dd></div>
 		<div><dt>artists</dt><dd>{fmt(data.totals.artists)}</dd></div>
 		<div><dt>songs</dt><dd>{fmt(data.totals.tracks)}</dd></div>

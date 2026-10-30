@@ -1,13 +1,13 @@
 <script lang="ts">
 	import Cover from './Cover.svelte';
-	import { fmt, listened, timeUnit } from '#lib/nav.js';
+	import { fmt, listened } from '#lib/nav.js';
 	import { formatDate } from '#lib/time.js';
 
 	// Image-grid view of a top list: big artwork, name, and the figure the list is sorted by.
 	type Item = { name: string; sub?: string | null; href?: string; image?: string | null; plays: number; ms: number; first?: number; last?: number };
 	let { items, sort = 'plays', round = false, start = 0, tz = 'UTC' }: { items: Item[]; sort?: string; round?: boolean; start?: number; tz?: string } = $props();
 	const figure = (i: Item) =>
-		sort === 'minutes' ? `${listened(i.ms)} ${timeUnit() === 'minutes' ? 'min' : timeUnit()}`
+		sort === 'minutes' ? listened(i.ms)
 		: sort === 'last' && i.last ? `last ${formatDate(i.last, tz)}`
 		: sort === 'first' && i.first ? `first ${formatDate(i.first, tz)}`
 		: `${fmt(i.plays)} plays`;
@@ -16,7 +16,7 @@
 <ol class="grid" {start}>
 	{#each items as item, i (item.href ?? i)}
 		<li>
-			<a href={item.href} title="{item.name}: {fmt(item.plays)} plays, {listened(item.ms)} {timeUnit()}">
+			<a href={item.href} title="{item.name}: {fmt(item.plays)} plays, {listened(item.ms)}">
 				<span class="art"><Cover src={item.image} alt={item.name} size={220} {round} /><span class="rank">{start + i + 1}</span></span>
 				<strong>{item.name}</strong>
 				{#if item.sub}<small>{item.sub}</small>{/if}
