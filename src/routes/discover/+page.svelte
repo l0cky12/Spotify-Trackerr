@@ -27,6 +27,8 @@
 	};
 	type Pick = (typeof shelves)[number]['items'][number];
 	const name = (r: Pick) => r.title ?? r.album ?? r.artist;
+	// Albums and artists are like a seed artist; songs are like a seed song, named in full on hover.
+	const like = (r: Pick) => `Like ${r.why}${r.whyBy ? ` by ${r.whyBy}` : ''}`;
 	const local = (r: Pick) => (r.trackId ? `/track/${r.trackId}` : r.albumId ? `/album/${r.albumId}` : !r.title && !r.album && r.artistId ? `/artist/${r.artistId}` : null);
 </script>
 
@@ -79,7 +81,8 @@
 								<Cover src={r.image} alt={name(r)} size={140} round={s.round} />
 								<span class="name" title={name(r)}>{name(r)}</span>
 							</a>
-							<span class="sub">{s.round ? `Like ${r.why}` : r.artist}</span>
+							{#if !s.round}<span class="sub">{r.artist}</span>{/if}
+							{#if r.why}<span class="sub" title={like(r)}>Like {r.why}</span>{/if}
 						</li>
 					{/each}
 				</ul>

@@ -107,15 +107,15 @@ try {
 			if (p % 3 === 0) play.run(2 + p % 2, entry.track, entry.artist, entry.artist, at, entry.ms);
 		}
 	}
-	const picks = artists.slice(0, 7).map(([artist, , title], i) => ({
+	const picks = artists.slice(0, 7).map(([artist, , title, seedSong], i) => ({
 		artist: `${artist} Ensemble`, title: `${title} Reprise`, album: `Sessions ${i + 1}`,
-		image: art(i + 20), why: artist
+		image: art(i + 20), why: artist, seedSong
 	}));
 	db.prepare('INSERT INTO cache VALUES (?, ?, ?)').run('discover:1', JSON.stringify({
-		lastfmUser: 'morgan-demo', listenbrainzUser: 'morgan-demo', at: now,
+		seeds: picks.map(({ why }) => why), lastfmUser: 'morgan-demo', listenbrainzUser: 'morgan-demo', at: now,
 		artists: picks.map(({ artist, image, why }) => ({ artist, image, why })),
 		albums: picks.map(({ artist, album, image, why }) => ({ artist, album, image, why })),
-		songs: picks.map(({ artist, title, image, why }) => ({ artist, title, image, why }))
+		songs: picks.map(({ artist, title, image, why, seedSong }) => ({ artist, title, image, why: seedSong, whyBy: why }))
 	}), now);
 	db.exec('COMMIT');
 	assert(db.prepare('SELECT COUNT(*) n FROM plays').get().n > 10000, 'Demo history is empty');
