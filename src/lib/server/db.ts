@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
 	spotify_own_app INTEGER NOT NULL DEFAULT 0,
 	sync_error TEXT,
 	last_sync_at INTEGER,
+	sync_minutes INTEGER NOT NULL DEFAULT 5,
 	own_client_id TEXT,
 	own_client_secret TEXT,
 	lastfm_user TEXT,
@@ -200,6 +201,8 @@ if (!userColumns.includes('avatar')) db.exec('ALTER TABLE users ADD COLUMN avata
 // Where the person lives and how far they'd travel, for finding shows near them.
 if (!userColumns.includes('home_location')) db.exec('ALTER TABLE users ADD COLUMN home_location TEXT');
 if (!userColumns.includes('show_miles')) db.exec('ALTER TABLE users ADD COLUMN show_miles INTEGER NOT NULL DEFAULT 100');
+// How often new plays sync, picked in Settings (5–30 minutes).
+if (!userColumns.includes('sync_minutes')) db.exec('ALTER TABLE users ADD COLUMN sync_minutes INTEGER NOT NULL DEFAULT 5');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');

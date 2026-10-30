@@ -7,6 +7,7 @@
 
 	let { data, form } = $props();
 	let importing = $state(false);
+	let syncing = $state(false);
 	const msg = (section: string) => (form?.section === section ? form : null);
 	const browserTz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
 
@@ -61,9 +62,34 @@
 		{#if data.u.lastError}
 			<span class="error">Last sync failed: {data.u.lastError}</span>
 		{:else}
-			<span class="ok">Linked.</span> New plays sync every 5 minutes{#if data.u.lastSync}; last checked {formatWhen(data.u.lastSync, data.u.timezone)}{/if}.
+			<span class="ok">Linked.</span> New plays sync every {data.u.syncMinutes} minutes{#if data.u.lastSync}; last checked {formatWhen(data.u.lastSync, data.u.timezone)}{/if}.
 		{/if}
 	</p>
+	<div class="row sync">
+		<form method="POST" action="?section=spotify&/syncEvery" use:enhance class="row">
+			<label>Sync every
+				<select name="minutes" value={data.u.syncMinutes}>
+					{#each data.syncChoices as m (m)}<option value={m}>{m} minutes</option>{/each}
+				</select>
+			</label>
+			<button class="secondary">Save</button>
+		</form>
+		<form
+			method="POST"
+			action="?section=spotify&/syncNow"
+			use:enhance={() => {
+				syncing = true;
+				return async ({ update }) => {
+					await update();
+					syncing = false;
+				};
+			}}
+		>
+			<button disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+		</form>
+	</div>
+	{#if msg('spotify')?.synced !== undefined}<p class="ok">Synced: {msg('spotify')?.synced === 1 ? '1 new play' : `${fmt(msg('spotify')?.synced ?? 0)} new plays`}.</p>{/if}
+	{#if msg('spotify')?.saved}<p class="ok">Saved.</p>{/if}
 	{#if data.u.expiresAt}<p class="muted">Spotify ends this link on {formatDate(data.u.expiresAt, data.u.timezone)}, six months after you signed in. Reconnect any time to reset it.</p>{/if}
 	<div class="row">
 		<a class="button" href="/auth/spotify?mode=link">Reconnect Spotify</a>
@@ -428,6 +454,9 @@
 		gap: 10px;
 		align-items: end;
 		flex-wrap: wrap;
+	}
+	.sync {
+		margin-bottom: 14px;
 	}
 	.stack {
 		display: grid;

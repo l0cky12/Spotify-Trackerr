@@ -2,7 +2,7 @@
 
 Self-hosted Spotify listening history, stats, and music discovery for you and a few friends.
 See your top songs, albums, artists, and genres; explore how your listening changes over time;
-and revisit any year's music. New plays sync from Spotify every 5 minutes, and Spotify's
+and revisit any year's music. New plays sync from Spotify every 5 to 30 minutes (your pick), and Spotify's
 extended streaming history export fills in the past.
 
 Optional Last.fm and ListenBrainz connections help Discover pick new music from more of your
@@ -92,6 +92,13 @@ See the [artist](docs/screenshots/artist.png), [album](docs/screenshots/album.pn
 ![Shows page with two new shows, your home and travel distance, and the artists you watch](docs/screenshots/shows.png)
 
 ![Settings → AI assistant with a new access key and setup commands](docs/screenshots/settings-ai-assistant.png)
+
+</details>
+
+<details>
+<summary>Settings: Spotify sync interval and Sync now</summary>
+
+![Settings showing the linked demo Spotify account, the sync interval picker, and the Sync now button](docs/screenshots/settings-spotify.png)
 
 </details>
 

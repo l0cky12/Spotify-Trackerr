@@ -33,42 +33,58 @@ export const api = (user: Row, path: string, body?: unknown): Promise<any> => ca
 /** Calls the Web API with the server app's own credentials (no user); null when the server has no Spotify app. */
 export const appApi = (path: string): Promise<any> => call(spotifyAppId(null), path, spotifyAppToken);
 
-/** Pulls the latest 50 plays for every linked user. Duplicates are dropped by insertPlay. */
-export async function syncAll() {
-	for (const user of activeSpotifyLinks()) {
-		try {
-			const data = await api(user, '/me/player/recently-played?limit=50');
-			let added = 0;
-			for (const item of data?.items ?? []) {
-				const t = item.track;
-				if (!t || t.type !== 'track' || !t.artists?.length) continue;
-				const artistId = upsertArtist(t.artists[0].name, t.artists[0].id);
-				const year = parseInt(t.album?.release_date ?? '', 10) || undefined;
-				const albumId = t.album?.name ? upsertAlbum(artistId, t.album.name, { image: t.album.images?.[0]?.url, year }) : null;
-				const track = upsertTrack(artistId, albumId, t.name, t.id, t.duration_ms);
-				setFeatures(track.id, t.artists.slice(1).map((a: any) => a?.name).filter((n: unknown) => typeof n === 'string' && n.trim()));
-				const ok = insertPlay({
-					userId: user.id,
-					trackId: track.id,
-					albumId,
-					artistId,
-					playedAt: Math.floor(Date.parse(item.played_at) / 1000),
-					// ponytail: recently-played has no ms_played, so a synced play counts as the full song
-					msPlayed: t.duration_ms ?? 0,
-					source: 'sync',
-					durationMs: t.duration_ms ?? null
-				});
-				if (ok) added++;
-			}
-			recordSync(user.id);
-			if (added) console.log(`sync: user ${user.id} +${added}`);
-		} catch (e) {
-			// Rate limits pause that app's calls (see call); the person isn't at fault, so it's not a sync error.
-			if (e instanceof SpotifyError && e.kind === 'rateLimited') continue;
-			recordSync(user.id, e);
+const lastTried = new Map<number, number>();
+
+/**
+ * Pulls the latest 50 plays for one linked person. Duplicates are dropped by insertPlay.
+ * Returns how many plays were new, or why it failed.
+ */
+export async function syncUser(user: Row): Promise<{ added: number } | { error: string }> {
+	lastTried.set(user.id, Date.now());
+	try {
+		const data = await api(user, '/me/player/recently-played?limit=50');
+		let added = 0;
+		for (const item of data?.items ?? []) {
+			const t = item.track;
+			if (!t || t.type !== 'track' || !t.artists?.length) continue;
+			const artistId = upsertArtist(t.artists[0].name, t.artists[0].id);
+			const year = parseInt(t.album?.release_date ?? '', 10) || undefined;
+			const albumId = t.album?.name ? upsertAlbum(artistId, t.album.name, { image: t.album.images?.[0]?.url, year }) : null;
+			const track = upsertTrack(artistId, albumId, t.name, t.id, t.duration_ms);
+			setFeatures(track.id, t.artists.slice(1).map((a: any) => a?.name).filter((n: unknown) => typeof n === 'string' && n.trim()));
+			const ok = insertPlay({
+				userId: user.id,
+				trackId: track.id,
+				albumId,
+				artistId,
+				playedAt: Math.floor(Date.parse(item.played_at) / 1000),
+				// ponytail: recently-played has no ms_played, so a synced play counts as the full song
+				msPlayed: t.duration_ms ?? 0,
+				source: 'sync',
+				durationMs: t.duration_ms ?? null
+			});
+			if (ok) added++;
 		}
+		recordSync(user.id);
+		if (added) console.log(`sync: user ${user.id} +${added}`);
+		return { added };
+	} catch (e) {
+		// Rate limits pause that app's calls (see call); the person isn't at fault, so it's not a sync error.
+		if (!(e instanceof SpotifyError && e.kind === 'rateLimited')) recordSync(user.id, e);
+		return { error: String((e as Error)?.message ?? e) };
 	}
 }
+
+/** Syncs every linked person, one after another. */
+export async function syncAll(users = activeSpotifyLinks()) {
+	for (const user of users) await syncUser(user);
+}
+
+/**
+ * Syncs the people whose chosen interval (sync_minutes) has passed since their last try. The 30 s of slack keeps a
+ * once-a-minute check from landing just short of the interval and waiting a whole extra minute.
+ */
+export const syncDue = () => syncAll(activeSpotifyLinks().filter((u) => Date.now() - (lastTried.get(u.id) ?? 0) >= u.sync_minutes * 60_000 - 30_000));
 
 /**
  * Looks up the featured artists of one song that has none recorded yet (imported history only names the main artist),
