@@ -146,9 +146,11 @@ try {
 	db.close(); db = undefined;
 
 	browser = await chromium.launch();
-	const context = await browser.newContext({ baseURL, viewport: { width: 1360, height: 900 },
-		deviceScaleFactor: 1, colorScheme: 'dark', locale: 'en-US', timezoneId: 'UTC', reducedMotion: 'reduce' });
-	await context.route('**/*', (route) => new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort());
+	const contextOptions = { baseURL, viewport: { width: 1360, height: 900 },
+		deviceScaleFactor: 1, colorScheme: 'dark', locale: 'en-US', timezoneId: 'UTC', reducedMotion: 'reduce' };
+	const offline = (route) => new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort();
+	const context = await browser.newContext(contextOptions);
+	await context.route('**/*', offline);
 	const page = await context.newPage();
 	await page.clock.setFixedTime(snapshot);
 	const errors = [];
@@ -201,6 +203,28 @@ try {
 	await pdf.saveAs(join(outputDir, 'listening-report-2026-09.pdf'));
 	assert.equal(readFileSync(join(outputDir, 'listening-report-2026-09.pdf')).subarray(0, 5).toString(), '%PDF-', 'Report download is not a PDF');
 	console.log('Saved listening-report-2026-09.pdf');
+	// Reports opens on this year; share it and open the link signed out, the way a friend would.
+	await page.goto('/reports');
+	assert.equal(new URL(page.url()).search, '?period=2026', 'Reports should open on this year');
+	await page.getByRole('button', { name: 'Share with friends', exact: true }).click();
+	const shareLink = await page.getByLabel('Link to this report').inputValue();
+	const friend = await browser.newContext(contextOptions);
+	await friend.route('**/*', offline);
+	const friendPage = await friend.newPage();
+	await friendPage.clock.setFixedTime(snapshot);
+	friendPage.on('pageerror', (error) => errors.push(error.message));
+	assert((await friendPage.goto(new URL(shareLink).pathname)).ok(), `${shareLink} did not open signed out`);
+	await expect(friendPage.getByRole('heading', { name: "Morgan (demo)'s 2026", exact: true })).toBeVisible();
+	await expect(friendPage.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
+	await friendPage.evaluate(async () => {
+		await Promise.all([...document.images].map((img) => img.decode().catch(() => {})));
+		await document.fonts.ready;
+	});
+	await friendPage.waitForFunction(() => [...document.querySelectorAll('.chart > svg')]
+		.every((svg) => Math.abs(svg.getBoundingClientRect().width - svg.parentElement.clientWidth) < 2));
+	await friendPage.screenshot({ path: join(outputDir, 'shared-report.png'), fullPage: true, animations: 'disabled' });
+	console.log('Captured shared-report.png');
+	await friend.close();
 	await capture('discover.png', '/discover', 'Discover');
 	await expect(page.getByRole('heading', { name: 'Artists', exact: false })).toBeVisible();
 	await capture('people.png', '/people', 'People');
