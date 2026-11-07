@@ -24,10 +24,13 @@ export function viewOf(event: RequestEvent) {
 		ids,
 		readonly: target?.id !== me.id,
 		label: target ? (target.id === me.id ? null : target.display_name) : 'Everyone',
+		name: target ? (target.display_name as string) : 'Everyone',
 		tz: me.timezone as string,
 		rankBy: me.rank_by as 'plays' | 'minutes'
 	};
 }
+
+export type View = ReturnType<typeof viewOf>;
 
 export function scopeOf(event: RequestEvent, fallback: RangeId = '7d') {
 	const v = viewOf(event);

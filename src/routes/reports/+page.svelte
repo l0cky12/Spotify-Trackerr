@@ -12,10 +12,11 @@
 	const trend = (p: number | null) => (p === null || p === 0 ? '' : p > 0 ? 'up' : 'down');
 	const prevName = $derived(data.period.m === null ? 'Previous year' : 'Previous month');
 	const stats = $derived([
-		{ k: 'Plays', v: fmt(data.totals.plays), d: data.delta.plays },
-		{ k: 'Time listened', v: listened(data.totals.ms), d: data.delta.ms },
-		{ k: 'Artists', v: fmt(data.totals.artists), d: data.delta.artists },
-		{ k: 'Songs', v: fmt(data.totals.tracks), d: data.delta.tracks }
+		{ k: 'Plays', n: data.totals.plays, d: data.delta.plays, show: fmt },
+		{ k: 'Time listened', n: data.totals.ms, d: data.delta.ms, show: listened },
+		{ k: 'Artists', n: data.totals.artists, d: data.delta.artists, show: fmt },
+		{ k: 'New artists', n: data.totals.newArtists, d: data.delta.newArtists, show: fmt },
+		{ k: 'Songs', n: data.totals.tracks, d: data.delta.tracks, show: fmt }
 	]);
 </script>
 
@@ -23,6 +24,7 @@
 	<div>
 		<h1>{data.period.label}</h1>
 		<p class="muted">{data.view.label ? `${data.view.label}'s` : 'Your'} listening report{#if data.period.m === null}, the whole year{/if}</p>
+		<a class="download" href={u(`/reports/pdf?period=${data.period.id}`)} download>Download PDF</a>
 	</div>
 	<nav class="picker" aria-label="Period">
 		<div class="years">
@@ -43,8 +45,8 @@
 		{#each stats as s (s.k)}
 			<div>
 				<dt>{s.k}</dt>
-				<dd>{s.v}</dd>
-				<span class="delta {trend(s.d.pct)}" title="{prevName}: {s.k === 'Time listened' ? listened(data.totals.ms - s.d.diff) : fmt((s.k === 'Plays' ? data.totals.plays : s.k === 'Artists' ? data.totals.artists : data.totals.tracks) - s.d.diff)}">
+				<dd>{s.show(s.n)}</dd>
+				<span class="delta {trend(s.d.pct)}" title="{prevName}: {s.show(s.n - s.d.diff)}">
 					{pct(s.d.pct)} <small>vs {data.period.prev.label}</small>
 				</span>
 			</div>
@@ -58,12 +60,10 @@
 		{/if}
 	</dl>
 
-	{#if data.series}
-		<section class="panel">
-			<h2>Plays over {data.period.label} <small>{data.period.prev.label} alongside</small></h2>
-			<Columns labels={data.series.labels} values={data.series.cur} prev={data.series.prev} name={data.period.label} prevName={data.period.prev.label} />
-		</section>
-	{/if}
+	<section class="panel">
+		<h2>Plays over {data.period.label} <small>{data.period.prev.label} alongside</small></h2>
+		<Columns labels={data.series.labels} values={data.series.cur} prev={data.series.prev} name={data.period.label} prevName={data.period.prev.label} />
+	</section>
 
 	<div class="grid3">
 		<section class="panel"><h2>Top 10 songs</h2><CoverGrid items={list(data.tracks, 'track')} sort={rankBy} min={100} /></section>
@@ -81,7 +81,7 @@
 			{/if}
 		</section>
 		<section class="panel">
-			<h2>New to you <small>Artists first played in {data.period.label}</small></h2>
+			<h2>New to you <small>{fmt(data.totals.newArtists)} artists first played in {data.period.label}</small></h2>
 			{#if data.newArtists.length}
 				<CoverGrid items={list(data.newArtists, 'artist')} sort={rankBy} round min={110} />
 			{:else}
@@ -104,6 +104,20 @@
 	}
 	.head p {
 		margin: 4px 0 0;
+	}
+	.download {
+		display: inline-block;
+		margin-top: 10px;
+		padding: 4px 12px;
+		border-radius: 6px;
+		background: var(--surface);
+		color: var(--ink-2);
+		font-size: 0.85rem;
+		text-decoration: none;
+	}
+	.download:hover {
+		background: var(--surface-2);
+		color: var(--ink);
 	}
 	.picker {
 		display: grid;

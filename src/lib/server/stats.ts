@@ -315,11 +315,11 @@ export function lastMonthId(tz: string, nowTs: number) {
 }
 
 export type Totals = { plays: number; ms: number; artists: number; tracks: number };
-export type Delta = Record<keyof Totals, { diff: number; pct: number | null }>;
+export type Change = { diff: number; pct: number | null };
 /** Change from the previous period, per total: absolute difference and percent (null when the previous period had none). */
-export function delta(cur: Totals, prev: Totals): Delta {
-	const one = (k: keyof Totals) => ({ diff: cur[k] - prev[k], pct: prev[k] ? Math.round(((cur[k] - prev[k]) / prev[k]) * 100) : null });
-	return { plays: one('plays'), ms: one('ms'), artists: one('artists'), tracks: one('tracks') };
+export function delta<K extends string>(cur: Record<K, number>, prev: Record<K, number>) {
+	const keys = Object.keys(cur) as K[];
+	return Object.fromEntries(keys.map((k) => [k, { diff: cur[k] - prev[k], pct: prev[k] ? Math.round(((cur[k] - prev[k]) / prev[k]) * 100) : null }])) as Record<K, Change>;
 }
 
 /** Local day number (days since 1970-01-01 in wall-clock time) of a timestamp. */
