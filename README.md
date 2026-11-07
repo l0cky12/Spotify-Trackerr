@@ -28,9 +28,15 @@ recommendation picks. No personal listening data or real connected accounts are 
   year and shows your biggest and quietest listening days. Quietest means the fewest plays on
   a day when you listened; days with no plays are excluded. “New to you” is based on the history
   stored here.
-- **Get a monthly or yearly report.** Reports compares any calendar month or year with the one
-  before it. *Download PDF* saves it as a printable report: totals, the busiest day, plays over
-  the period, when you listen, top artists, songs, albums and genres, and every artist new to you.
+- **Get a monthly or yearly report.** Reports opens on this year and compares any calendar month
+  or year with the one before it (a period still under way is compared with the same stretch of
+  the one before). *Download PDF* saves it as a printable report: totals, the busiest day, plays
+  over the period, when you listen, and top artists, songs, albums and genres.
+- **Share a report with friends.** *Share with friends* publishes a copy of one Report at a link
+  anyone can open without signing in: totals, top lists, charts and your top 10 new artists, never
+  your play history. *Update* refreshes the copy and keeps the link; *Stop sharing* breaks it.
+  Friends need a public address to open it, so set up the Cloudflare Tunnel and put its hostname
+  in `SHARE_URL`.
 - **Find new music.** Discover offers artists, albums, and songs you haven't played in the app's
   recorded history, using Last.fm recommendations. Connect Last.fm or ListenBrainz in Settings
   to use your top artists and songs from those services; otherwise it uses your local history.
@@ -64,11 +70,18 @@ with a pause per developer app, and add automated build, browser, and security c
 <details>
 <summary>Reports: a month compared with the one before, and its PDF</summary>
 
-![Reports page for September 2026 with a Download PDF link, totals, plays over the month, and top lists](docs/screenshots/reports.png)
+![Reports page for September 2026 with Share with friends and Download PDF buttons, stat cards, plays over the month, and top lists](docs/screenshots/reports.png)
 
 The downloaded PDF: [overview](docs/screenshots/report-pdf-1.png),
-[top lists](docs/screenshots/report-pdf-2.png), [new artists](docs/screenshots/report-pdf-3.png),
+[top lists](docs/screenshots/report-pdf-2.png),
 or [the PDF itself](docs/screenshots/listening-report-2026-09.pdf).
+
+</details>
+
+<details>
+<summary>A shared Report: what a friend sees from its link, without signing in</summary>
+
+![Shared 2026 report for Morgan with totals so far, plays over the year, top artists, songs, albums, genres and top 10 new artists](docs/screenshots/shared-report.png)
 
 </details>
 
@@ -170,8 +183,8 @@ https name.
    *Settings > Your own Spotify app*.
 2. **Cloudflare Tunnel.** Create a tunnel in Cloudflare Zero Trust, give it a public hostname
    that points to `http://app:3000`, and put the token in `CLOUDFLARE_TUNNEL_TOKEN`. Add that
-   hostname to `ALLOWED_HOSTS` and as a Spotify redirect URI, then run
-   `docker compose --profile tunnel up -d`.
+   hostname to `ALLOWED_HOSTS` and as a Spotify redirect URI, and set `SHARE_URL` to it so shared
+   Report links work for friends. Then run `docker compose --profile tunnel up -d`.
 3. **Last.fm (optional).** Create a free app at https://www.last.fm/api/account/create and paste its
    API key and shared secret into *Settings > Last.fm* as an admin (or put them in `LASTFM_API_KEY`
    and `LASTFM_SHARED_SECRET`, which take priority). That turns on Discover

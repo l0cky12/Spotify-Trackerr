@@ -1,227 +1,223 @@
 <script lang="ts">
-	import BarList from '#lib/components/BarList.svelte';
-	import CoverGrid from '#lib/components/CoverGrid.svelte';
-	import Columns from '#lib/components/Columns.svelte';
-	import { u, fmt, listened } from '#lib/nav.js';
-	import { monthName } from '#lib/time.js';
+	import { enhance } from '$app/forms';
+	import ReportView from '#lib/components/ReportView.svelte';
+	import { u, fmt } from '#lib/nav.js';
+	import { formatDate, monthName } from '#lib/time.js';
+	import { scrollRow } from '#lib/scroll-row.js';
 
-	let { data } = $props();
-	const rankBy = $derived(data.view.rankBy);
-	const list = (rows: any[], kind: string) => rows.map((r) => ({ ...r, href: u(`/${kind}/${r.id}`), sub: r.artist, subHref: r.artist_id ? u(`/artist/${r.artist_id}`) : undefined }));
-	const pct = ({ pct: p, diff }: { pct: number | null; diff: number }) => (p === null ? (diff ? 'new' : 'no change') : `${p > 0 ? '+' : ''}${p}%`);
-	const trend = (p: number | null) => (p === null || p === 0 ? '' : p > 0 ? 'up' : 'down');
-	const prevName = $derived(data.period.m === null ? 'Previous year' : 'Previous month');
-	const stats = $derived([
-		{ k: 'Plays', n: data.totals.plays, d: data.delta.plays, show: fmt },
-		{ k: 'Time listened', n: data.totals.ms, d: data.delta.ms, show: listened },
-		{ k: 'Artists', n: data.totals.artists, d: data.delta.artists, show: fmt },
-		{ k: 'New artists', n: data.totals.newArtists, d: data.delta.newArtists, show: fmt },
-		{ k: 'Songs', n: data.totals.tracks, d: data.delta.tracks, show: fmt }
-	]);
+	let { data, form } = $props();
+	const shareUrl = $derived(data.share ? `${data.origin}/share/${data.share.token}` : null);
+	const isShared = (id: string) => data.shared.includes(id);
+	let copied = $state(false);
+	let field = $state<HTMLInputElement>();
+	async function copy() {
+		try {
+			await navigator.clipboard.writeText(shareUrl!);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			field?.select(); // no clipboard access (plain http): leave it selected to copy by hand
+		}
+	}
 </script>
 
-<div class="head">
-	<div>
-		<h1>{data.period.label}</h1>
-		<p class="muted">{data.view.label ? `${data.view.label}'s` : 'Your'} listening report{#if data.period.m === null}, the whole year{/if}</p>
-		<a class="download" href={u(`/reports/pdf?period=${data.period.id}`)} download>Download PDF</a>
-	</div>
-	<nav class="picker" aria-label="Period">
-		<div class="years">
-			{#each data.years as y (y)}<a href={u(`/reports?period=${y}`)} aria-current={y === data.period.y && data.period.m === null ? 'page' : undefined}>{y}</a>{/each}
-		</div>
-		<div class="months">
-			{#each data.months as m (m.id)}
-				<a href={u(`/reports?period=${m.id}`)} aria-current={m.id === data.period.id ? 'page' : undefined} class:empty={!m.plays} title="{fmt(m.plays)} plays">{monthName(m.m)}</a>
-			{/each}
-		</div>
-	</nav>
-</div>
-
-{#if !data.totals.plays}
-	<p class="muted">No plays in {data.period.label}.</p>
-{:else}
-	<dl class="totals">
-		{#each stats as s (s.k)}
-			<div>
-				<dt>{s.k}</dt>
-				<dd>{s.show(s.n)}</dd>
-				<span class="delta {trend(s.d.pct)}" title="{prevName}: {s.show(s.n - s.d.diff)}">
-					{pct(s.d)} <small>vs {data.period.prev.label}</small>
-				</span>
-			</div>
+<nav class="picker" aria-label="Period">
+	<div class="seg years" {@attach scrollRow(data.period.id)}>
+		{#each data.years as y (y)}
+			<a href={u(`/reports?period=${y}`)} aria-current={y === data.period.y && data.period.m === null ? 'page' : undefined} class:within={y === data.period.y && data.period.m !== null}>
+				{y}{#if isShared(String(y))}<i class="dot" title="Shared"></i>{/if}
+			</a>
 		{/each}
-		{#if data.busiest}
-			<div>
-				<dt>Busiest day</dt>
-				<dd class="day">{data.busiest.label}</dd>
-				<span class="delta">{fmt(data.busiest.plays)} plays</span>
-			</div>
+	</div>
+	<div class="seg months" {@attach scrollRow(data.period.id)}>
+		<a href={u(`/reports?period=${data.period.y}`)} aria-current={data.period.m === null ? 'page' : undefined}>Whole year</a>
+		{#each data.months as m (m.id)}
+			<a href={u(`/reports?period=${m.id}`)} aria-current={m.id === data.period.id ? 'page' : undefined} class:empty={!m.plays} title="{fmt(m.plays)} plays{isShared(m.id) ? ', shared' : ''}">
+				{monthName(m.m)}{#if isShared(m.id)}<i class="dot"></i>{/if}
+			</a>
+		{/each}
+	</div>
+</nav>
+
+<ReportView report={data} rankBy={data.view.rankBy} eyebrow="{data.view.label ? `${data.view.label}'s` : 'Your'} listening report">
+	{#snippet actions()}
+		{#if !data.view.readonly && data.totals.plays && !data.share}
+			<form method="POST" action="?/publish" use:enhance>
+				<input type="hidden" name="period" value={data.period.id} />
+				<button class="share-btn">Share with friends</button>
+			</form>
 		{/if}
-	</dl>
-
-	<section class="panel">
-		<h2>Plays over {data.period.label} <small>{data.period.prev.label} alongside</small></h2>
-		<Columns labels={data.series.labels} values={data.series.cur} prev={data.series.prev} name={data.period.label} prevName={data.period.prev.label} />
-	</section>
-
-	<div class="grid3">
-		<section class="panel"><h2>Top 10 songs</h2><CoverGrid items={list(data.tracks, 'track')} sort={rankBy} min={100} /></section>
-		<section class="panel"><h2>Top 10 albums</h2><CoverGrid items={list(data.albums, 'album')} sort={rankBy} min={100} /></section>
-		<section class="panel"><h2>Top 10 artists</h2><CoverGrid items={list(data.artists, 'artist')} sort={rankBy} round min={100} /></section>
-	</div>
-
-	<div class="grid2">
-		<section class="panel">
-			<h2>Top 10 genres</h2>
-			{#if data.genres.length}
-				<BarList items={data.genres.map((g) => ({ ...g, href: u(`/genre/${encodeURIComponent(g.name)}`) }))} {rankBy} covers={false} />
-			{:else}
-				<p class="muted">No genre data for this period yet.</p>
-			{/if}
-		</section>
-		<section class="panel">
-			<h2>New to you <small>{fmt(data.totals.newArtists)} artists first played in {data.period.label}</small></h2>
-			{#if data.newArtists.length}
-				<CoverGrid items={list(data.newArtists, 'artist')} sort={rankBy} round min={110} />
-			{:else}
-				<p class="muted">No new artists this period.</p>
-			{/if}
-		</section>
-	</div>
-
-	<p class="muted small"><a href={u(`/history?range=all&month=${data.period.m === null ? `${data.period.y}-01` : data.period.id}`)}>Browse these plays in History</a>{#if data.period.m === null} · <a href={u(`/wrapped/${data.period.y}`)}>Year in review</a>{/if}</p>
-{/if}
+		<a class="button secondary" href={u(`/reports/pdf?period=${data.period.id}`)} download>Download PDF</a>
+		{#if data.period.m === null}<a class="button secondary" href={u(`/wrapped/${data.period.y}`)}>Year in review</a>{/if}
+		<a class="quiet" href={u(`/history?range=all&month=${data.period.m === null ? `${data.period.y}-01` : data.period.id}`)}>Browse these plays</a>
+	{/snippet}
+	{#snippet below()}
+		{#if form?.error}<p class="error">{form.error}</p>{/if}
+		{#if data.share && shareUrl}
+			<section class="share" aria-label="Shared link">
+				<p>
+					<strong><i class="dot"></i>Shared</strong>
+					<span class="muted">Friends with the link see this report as of {formatDate(data.share.updated_at, data.view.tz)}: totals and top lists, not your play history.</span>
+				</p>
+				<div class="share-row">
+					<input bind:this={field} id="share-link" readonly value={shareUrl} aria-label="Link to this report" onfocus={(e) => e.currentTarget.select()} />
+					<div class="share-buttons">
+						<button type="button" onclick={copy}>{copied ? 'Copied' : 'Copy link'}</button>
+						<a class="button secondary" href={shareUrl} target="_blank" rel="noopener">Open</a>
+						<form method="POST" action="?/publish" use:enhance>
+							<input type="hidden" name="period" value={data.period.id} />
+							<button class="secondary" title="Replace the shared copy with this report as it is now">Update</button>
+						</form>
+						<form method="POST" action="?/unpublish" use:enhance>
+							<input type="hidden" name="period" value={data.period.id} />
+							<button class="secondary stop">Stop sharing</button>
+						</form>
+					</div>
+				</div>
+			</section>
+		{/if}
+	{/snippet}
+</ReportView>
 
 <style>
-	.head {
+	.picker {
 		display: flex;
-		justify-content: space-between;
-		align-items: end;
-		gap: 16px;
 		flex-wrap: wrap;
-		margin-bottom: 20px;
+		gap: 8px;
+		margin-bottom: 16px;
 	}
-	.head p {
-		margin: 4px 0 0;
-	}
-	.download {
-		display: inline-block;
-		margin-top: 10px;
-		padding: 4px 12px;
-		border-radius: 6px;
+	.seg {
+		position: relative;
+		display: flex;
+		gap: 2px;
 		background: var(--surface);
+		border: 1px solid var(--border);
+		padding: 3px;
+		border-radius: 10px;
+		max-width: 100%;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	/* Fade an edge with more periods hidden past it. */
+	.seg:global(.more-right) {
+		mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+	}
+	.seg:global(.more-left) {
+		mask-image: linear-gradient(to right, transparent, #000 48px);
+	}
+	.seg:global(.more-left.more-right) {
+		mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+	}
+	.seg a {
+		position: relative;
+		flex: none;
+		padding: 5px 11px;
+		border-radius: 7px;
+		text-decoration: none;
 		color: var(--ink-2);
 		font-size: 0.85rem;
-		text-decoration: none;
+		font-variant-numeric: tabular-nums;
 	}
-	.download:hover {
+	.seg a.empty {
+		color: var(--muted);
+	}
+	.seg a:hover {
 		background: var(--surface-2);
 		color: var(--ink);
 	}
-	.picker {
-		display: grid;
-		gap: 6px;
-		justify-items: end;
+	.seg a.within {
+		background: var(--surface-3);
+		color: var(--ink);
+		font-weight: 650;
 	}
-	.years,
-	.months {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 2px;
-		background: var(--surface);
-		padding: 3px;
-		border-radius: 8px;
-	}
-	.picker a {
-		padding: 4px 10px;
-		border-radius: 6px;
-		text-decoration: none;
-		color: var(--ink-2);
-		font-size: 0.85rem;
-	}
-	.picker a.empty {
-		color: var(--muted);
-	}
-	.picker a:hover {
-		background: var(--surface-2);
-	}
-	.picker a[aria-current] {
+	.seg a[aria-current] {
 		background: var(--ink);
 		color: var(--page);
-		font-weight: 600;
+		font-weight: 650;
 	}
-	.totals {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px 40px;
-		margin: 0 0 20px;
-		padding: 0 4px;
+	.dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		margin-left: 5px;
+		vertical-align: 2px;
+		border-radius: 50%;
+		background: var(--good);
 	}
-	.totals div {
-		display: grid;
+	form {
+		display: contents;
 	}
-	dt {
-		color: var(--muted);
-		font-size: 0.8rem;
-		order: -1;
+	.share-btn {
+		background: #1db954;
+		color: #08130b;
+		font-weight: 650;
 	}
-	dd {
-		margin: 0;
-		font-size: 1.6rem;
-		font-weight: 700;
-		font-stretch: 80%;
+	.share-btn:hover {
+		background: #2bd065;
 	}
-	dd.day {
-		font-size: 1.2rem;
-	}
-	.delta {
-		font-size: 0.85rem;
+	.quiet {
 		color: var(--ink-2);
-		font-variant-numeric: tabular-nums;
+		font-size: 0.9rem;
 	}
-	.delta.up {
-		color: var(--good);
-	}
-	.delta.down {
-		color: var(--critical);
-	}
-	.delta small {
-		color: var(--muted);
-	}
-	.panel {
-		margin-bottom: 20px;
-	}
-	.grid3,
-	.grid2 {
+	.share {
 		display: grid;
-		gap: 20px;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+		align-items: center;
+		gap: 12px 24px;
 		margin-bottom: 20px;
+		padding: 14px 18px;
+		border-radius: 14px;
+		background: color-mix(in srgb, var(--good) 9%, var(--surface));
+		border: 1px solid color-mix(in srgb, var(--good) 35%, transparent);
 	}
-	.grid3 {
-		grid-template-columns: repeat(3, 1fr);
+	.share p {
+		margin: 0;
+		display: grid;
+		gap: 2px;
+		font-size: 0.88rem;
 	}
-	.grid2 {
-		grid-template-columns: 1fr 1fr;
+	.share .dot {
+		margin: 0 6px 0 0;
 	}
-	.grid3 .panel,
-	.grid2 .panel {
-		margin-bottom: 0;
+	.share-row {
+		display: flex;
+		gap: 8px;
+		min-width: 0;
 	}
-	.small {
-		font-size: 0.85rem;
+	.share-row input {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-size: 0.88rem;
 	}
-	@media (max-width: 1000px) {
-		.grid3 {
+	.share-buttons {
+		display: flex;
+		gap: 6px;
+		flex: none;
+	}
+	.stop {
+		color: #f09a9a;
+	}
+	.error {
+		margin: 0 0 16px;
+	}
+	@media (max-width: 1100px) {
+		.share {
 			grid-template-columns: 1fr;
 		}
 	}
-	@media (max-width: 800px) {
-		.grid2 {
-			grid-template-columns: 1fr;
-		}
+	@media (max-width: 640px) {
 		.picker {
-			justify-items: start;
+			display: grid;
+		}
+		.share-row {
+			flex-direction: column;
+		}
+		.share-buttons {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+		}
+		.share-buttons > :global(*) {
+			text-align: center;
 		}
 	}
 </style>

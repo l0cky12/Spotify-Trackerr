@@ -185,6 +185,18 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 	created_at INTEGER NOT NULL,
 	last_used_at INTEGER
 );
+
+-- A Report someone published for anyone with the link (/share/<token>): a frozen copy, so later plays,
+-- bans and edits don't change what friends see until the owner publishes it again. See shares.ts.
+CREATE TABLE IF NOT EXISTS report_shares (
+	token TEXT PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	period TEXT NOT NULL,
+	report TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	UNIQUE (user_id, period)
+);
 `);
 
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to an existing database.

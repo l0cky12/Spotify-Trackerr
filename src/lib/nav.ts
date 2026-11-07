@@ -21,7 +21,7 @@ export function withParams(params: Record<string, string | null>) {
 export const fmt = (n: number) => n.toLocaleString('en-US');
 export const compact = (n: number) => Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 
-/** The viewer's chosen unit for time listened, from Settings. */
-export const timeUnit = (): TimeUnit => page.data.me?.timeUnit ?? 'auto';
+/** The viewer's chosen unit for time listened, from Settings; on a shared Report, its owner's. */
+export const timeUnit = (): TimeUnit => page.data.timeUnit ?? page.data.me?.timeUnit ?? 'auto';
 /** Time listened in the viewer's unit, with the unit: '47 min', '3.2 days'. */
 export const listened = (ms: number) => formatListened(ms, timeUnit());

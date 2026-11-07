@@ -29,7 +29,8 @@
 
 <svelte:document onclick={openInApp} />
 
-{#if data.me}
+<!-- A shared Report stands on its own, even for a friend who also has an account here. -->
+{#if data.me && !page.url.pathname.startsWith('/share/')}
 	<header>
 		<a class="brand" href="/">Trackerr</a>
 		<nav>
