@@ -8,7 +8,7 @@
 	let { data } = $props();
 	const rankBy = $derived(data.view.rankBy);
 	const list = (rows: any[], kind: string) => rows.map((r) => ({ ...r, href: u(`/${kind}/${r.id}`), sub: r.artist, subHref: r.artist_id ? u(`/artist/${r.artist_id}`) : undefined }));
-	const pct = (p: number | null) => (p === null ? 'new' : `${p > 0 ? '+' : ''}${p}%`);
+	const pct = ({ pct: p, diff }: { pct: number | null; diff: number }) => (p === null ? (diff ? 'new' : 'no change') : `${p > 0 ? '+' : ''}${p}%`);
 	const trend = (p: number | null) => (p === null || p === 0 ? '' : p > 0 ? 'up' : 'down');
 	const prevName = $derived(data.period.m === null ? 'Previous year' : 'Previous month');
 	const stats = $derived([
@@ -47,7 +47,7 @@
 				<dt>{s.k}</dt>
 				<dd>{s.show(s.n)}</dd>
 				<span class="delta {trend(s.d.pct)}" title="{prevName}: {s.show(s.n - s.d.diff)}">
-					{pct(s.d.pct)} <small>vs {data.period.prev.label}</small>
+					{pct(s.d)} <small>vs {data.period.prev.label}</small>
 				</span>
 			</div>
 		{/each}
