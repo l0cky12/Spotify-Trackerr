@@ -17,6 +17,10 @@ ENV NODE_ENV=production \
 COPY --from=build /app/build build
 COPY --from=build /app/node_modules node_modules
 COPY package.json server.js ./
+# Debian security fixes land before the node base image is rebuilt with them.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 # Production starts Node directly; the bundled npm CLI adds unused vulnerable dependencies.
 RUN rm -rf /usr/local/lib/node_modules/npm \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx \

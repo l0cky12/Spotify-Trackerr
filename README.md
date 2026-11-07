@@ -28,6 +28,9 @@ recommendation picks. No personal listening data or real connected accounts are 
   year and shows your biggest and quietest listening days. Quietest means the fewest plays on
   a day when you listened; days with no plays are excluded. “New to you” is based on the history
   stored here.
+- **Get a monthly or yearly report.** Reports compares any calendar month or year with the one
+  before it. *Download PDF* saves it as a printable report: totals, the busiest day, plays over
+  the period, when you listen, top artists, songs, albums and genres, and every artist new to you.
 - **Find new music.** Discover offers artists, albums, and songs you haven't played in the app's
   recorded history, using Last.fm recommendations. Connect Last.fm or ListenBrainz in Settings
   to use your top artists and songs from those services; otherwise it uses your local history.
@@ -55,6 +58,17 @@ with a pause per developer app, and add automated build, browser, and security c
 <summary>Genre pages: top song, album, artist, and top 10 lists</summary>
 
 ![Indie rock genre page with leading song, album, and artist above three top 10 lists](docs/screenshots/genre.png)
+
+</details>
+
+<details>
+<summary>Reports: a month compared with the one before, and its PDF</summary>
+
+![Reports page for September 2026 with a Download PDF link, totals, plays over the month, and top lists](docs/screenshots/reports.png)
+
+The downloaded PDF: [overview](docs/screenshots/report-pdf-1.png),
+[top lists](docs/screenshots/report-pdf-2.png), [new artists](docs/screenshots/report-pdf-3.png),
+or [the PDF itself](docs/screenshots/listening-report-2026-09.pdf).
 
 </details>
 

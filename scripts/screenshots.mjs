@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -110,6 +110,17 @@ try {
 			if (p % 3 === 0) play.run(2 + p % 2, entry.track, entry.artist, entry.artist, at, entry.ms);
 		}
 	}
+	// Artists first heard in September 2026, so the default report (the last finished month) has new artists to list.
+	const newcomers = ['Café Mirage', 'Søren Lys', 'Hôtel Lumière', 'Brightwater', 'Kestrel Point', 'Marigold Youth', 'Paper Moons', 'Static Bloom', 'Tidewell', 'Ferngully Hours'];
+	newcomers.forEach((name, k) => {
+		const id = artists.length + k + 1, track = artists.length * 2 + k + 1, image = art(id);
+		db.prepare('INSERT INTO artists (id, name, key, image, genres_done) VALUES (?, ?, ?, ?, 1)').run(id, name, name.toLowerCase(), image);
+		db.prepare('INSERT INTO artist_genres VALUES (?, ?)').run(id, k % 2 ? 'folk' : 'ambient');
+		db.prepare('INSERT INTO albums (id, artist_id, name, key, image, release_year) VALUES (?, ?, ?, ?, ?, 2026)').run(id, id, `${name} EP`, `${name} ep`.toLowerCase(), image);
+		db.prepare('INSERT INTO tracks (id, artist_id, album_id, name, key, image, duration_ms, enriched) VALUES (?, ?, ?, ?, ?, ?, 200000, 1)').run(track, id, id, `${name} Theme`, `${name} theme`.toLowerCase(), image);
+		for (let n = 0; n < 2 + (k * 3) % 7; n++)
+			play.run(1, track, id, id, Date.UTC(2026, 8, 2 + (k * 5 + n * 4) % 27, 19 + (n % 4)) / 1000, 200000);
+	});
 	const picks = artists.slice(0, 7).map(([artist, , title, seedSong], i) => ({
 		artist: `${artist} Ensemble`, title: `${title} Reprise`, album: `Sessions ${i + 1}`,
 		image: art(i + 20), why: artist, seedSong
@@ -182,6 +193,14 @@ try {
 	await page.getByRole('heading', { name: 'New to you in 2026', exact: false }).evaluate((heading) =>
 		window.scrollTo(0, heading.closest('section').getBoundingClientRect().top + scrollY - 20));
 	await page.screenshot({ path: join(outputDir, 'year-in-review-new-artists.png'), animations: 'disabled' });
+	await capture('reports.png', '/reports?period=2026-09', 'Sep 2026');
+	const download = page.waitForEvent('download');
+	await page.getByRole('link', { name: 'Download PDF', exact: true }).click();
+	const pdf = await download;
+	assert.equal(pdf.suggestedFilename(), 'listening-report-2026-09.pdf');
+	await pdf.saveAs(join(outputDir, 'listening-report-2026-09.pdf'));
+	assert.equal(readFileSync(join(outputDir, 'listening-report-2026-09.pdf')).subarray(0, 5).toString(), '%PDF-', 'Report download is not a PDF');
+	console.log('Saved listening-report-2026-09.pdf');
 	await capture('discover.png', '/discover', 'Discover');
 	await expect(page.getByRole('heading', { name: 'Artists', exact: false })).toBeVisible();
 	await capture('people.png', '/people', 'People');
