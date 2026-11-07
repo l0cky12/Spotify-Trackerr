@@ -26,11 +26,12 @@ It clears inherited music-service credentials, blocks outbound requests in the d
 browser, and removes the temporary server and database when finished. Existing app data is not used.
 
 The script also downloads the September 2026 report from the Reports page and saves it here as
-`listening-report-2026-09.pdf`. The `report-pdf-*.png` images are its pages, rasterized at 1.5x
+`listening-report-2026-09.pdf`, then shares the 2026 report and captures its link signed out as
+`shared-report.png`. The `report-pdf-*.png` images are the PDF's pages, rasterized at 1.5x
 with a PDF renderer such as [MuPDF](https://mupdf.com/). The script doesn't make them, so render
 them again when the PDF changes.
 
 The script checks page headings and the unchanged app title, genre lists, yearly highlights,
-image loading, chart sizing, the report download, desktop horizontal overflow, and browser errors before reporting success.
+image loading, chart sizing, the report download, the Reports year default, the shared Report opened signed out, desktop horizontal overflow, and browser errors before reporting success.
 The dashboard currently has horizontal overflow on narrow phone screens. The phone image preserves
 the current layout, and the script reports that overflow without changing or hiding page content.
