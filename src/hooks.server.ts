@@ -6,8 +6,9 @@ import { startJobs } from '#lib/server/jobs.js';
 
 if (!building) startJobs();
 
-// /mcp signs in with an access key of its own instead of the session cookie.
-const PUBLIC = ['/login', '/auth/', '/mcp'];
+// /mcp signs in with an access key of its own instead of the session cookie. /share/ pages are Reports their
+// owners published for anyone with the link, and /img/ serves their covers (unguessable upload names).
+const PUBLIC = ['/login', '/auth/', '/mcp', '/share/', '/img/'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = userFromSession(event.cookies.get('session'));

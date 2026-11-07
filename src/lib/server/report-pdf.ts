@@ -9,7 +9,6 @@ const W = 595.28;
 const H = 841.89;
 const M = 44;
 const CW = W - 2 * M;
-const BOTTOM = H - M - 16;
 
 const INK = '#17151c';
 const INK_2 = '#4f4b57';
@@ -111,7 +110,7 @@ function statTile(doc: Doc, x: number, y: number, w: number, tile: { label: stri
 	setStyle(doc, { size: 7.5, bold: true });
 	const cw = doc.widthOfString(change.label);
 	text(doc, change.label, x + 10, y + 45, w - 20, { size: 7.5, bold: true, color: change.color });
-	text(doc, `vs ${tile.prev}`, x + 13 + cw, y + 45, w - 23 - cw, { size: 7.5, color: MUTED });
+	text(doc, tile.prev, x + 13 + cw, y + 45, w - 23 - cw, { size: 7.5, color: MUTED });
 }
 
 function niceStep(max: number) {
@@ -255,7 +254,9 @@ export async function renderReportPdf(report: Report, unit: TimeUnit): Promise<B
 	doc.rect(0, 0, W, 5).fill(ACCENT);
 	text(doc, title, M, y, CW, { size: 24, bold: true });
 	y += 32;
-	text(doc, `${who} · compared with ${period.prev.label} · generated ${report.generatedOn}`, M, y, CW, { size: 9, color: MUTED });
+	// A period still under way is compared with the same stretch of the one before (see reportOf).
+	const compared = period.partial ? `so far, compared with the same point in ${period.prev.label}` : `compared with ${period.prev.label}`;
+	text(doc, `${who} · ${compared} · generated ${report.generatedOn}`, M, y, CW, { size: 9, color: MUTED });
 	y += 30;
 
 	if (!totals.plays) {
@@ -269,7 +270,8 @@ export async function renderReportPdf(report: Report, unit: TimeUnit): Promise<B
 			{ label: 'New artists', value: fmt(totals.newArtists), change: delta.newArtists }
 		];
 		const tileW = (CW - 8 * (tiles.length - 1)) / tiles.length;
-		tiles.forEach((t, i) => statTile(doc, M + i * (tileW + 8), y, tileW, { ...t, prev: period.prev.label }));
+		const vs = period.partial ? `vs ${period.prev.label} so far` : `vs ${period.prev.label}`;
+		tiles.forEach((t, i) => statTile(doc, M + i * (tileW + 8), y, tileW, { ...t, prev: vs }));
 		y += 76;
 
 		if (report.busiest) {
@@ -340,25 +342,6 @@ export async function renderReportPdf(report: Report, unit: TimeUnit): Promise<B
 		text(doc, 'Top albums', M + colW + 24, y, colW, { size: 13, bold: true });
 		y += 24;
 		y += Math.max(topTable(doc, M, y, colW, report.tracks, unit), topTable(doc, M + colW + 24, y, colW, report.albums, unit)) + 22;
-
-		newPage();
-		heading('New to you', `artists first played in ${period.label}`);
-		if (!report.newArtists.length) {
-			text(doc, `No new artists in ${period.label}.`, M, y, CW, { size: 10, color: INK_2 });
-		} else {
-			const freshPlays = report.newArtists.reduce((a, r) => a + r.plays, 0);
-			text(doc, fmt(totals.newArtists), M, y, 160, { size: 34, bold: true });
-			text(doc, totals.newArtists === 1 ? 'new artist' : 'new artists', M, y + 38, 160, { size: 10, color: INK_2 });
-			text(doc, `${fmt(freshPlays)} plays, ${listened(report.newArtists.reduce((a, r) => a + r.ms, 0))}`, M, y + 54, 160, { size: 8.5, color: MUTED });
-			const mix: Slice[] = [
-				{ label: 'Artists new to you', value: freshPlays, color: ACCENT },
-				{ label: 'Artists you already knew', value: totals.plays - freshPlays, color: OTHER }
-			];
-			donut(doc, M + 230, y + 42, 42, mix, [share(freshPlays, totals.plays), 'of plays']);
-			legend(doc, M + 292, y + 28, 170, mix, totals.plays);
-			y += 104;
-			newArtistColumns(doc, report.newArtists, y, period.label);
-		}
 	}
 
 	const pages = doc.bufferedPageRange();
@@ -371,35 +354,4 @@ export async function renderReportPdf(report: Report, unit: TimeUnit): Promise<B
 	doc.end();
 	await ended;
 	return Buffer.concat(chunks);
-}
-
-/** Every new artist in three columns, top to bottom then across, onto as many pages as it takes. */
-function newArtistColumns(doc: Doc, rows: TopRow[], y: number, label: string) {
-	const gap = 18;
-	const colW = (CW - gap * 2) / 3;
-	const rowH = 14;
-	for (let i = 0; i < rows.length; ) {
-		if (BOTTOM - y - 16 < rowH * 3) {
-			doc.addPage();
-			y = M;
-			text(doc, `New to you in ${label}, continued`, M, y, CW, { size: 11, bold: true });
-			y += 22;
-		}
-		const perCol = Math.min(Math.floor((BOTTOM - y - 16) / rowH), Math.ceil((rows.length - i) / 3));
-		const pageRows = rows.slice(i, i + perCol * 3);
-		for (let c = 0; c * perCol < pageRows.length; c++) {
-			const x = M + c * (colW + gap);
-			text(doc, 'Plays', x + colW - 40, y, 40, { size: 7, color: MUTED }, 'right');
-			doc.moveTo(x, y + 11).lineTo(x + colW, y + 11).lineWidth(0.5).strokeColor(RULE).stroke();
-		}
-		pageRows.forEach((r, k) => {
-			const x = M + Math.floor(k / perCol) * (colW + gap);
-			const ry = y + 16 + (k % perCol) * rowH;
-			text(doc, String(i + k + 1), x, ry, 18, { size: 7.5, color: MUTED });
-			text(doc, r.name, x + 20, ry, colW - 64, { size: 8.5 });
-			text(doc, fmt(r.plays), x + colW - 40, ry, 40, { size: 8.5, color: INK_2 }, 'right');
-		});
-		i += pageRows.length;
-		y = BOTTOM;
-	}
 }

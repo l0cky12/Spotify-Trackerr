@@ -1,4 +1,4 @@
-import { test, expect, beforeAll } from 'vitest';
+import { test, expect, beforeAll, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -33,11 +33,39 @@ beforeAll(async () => {
 
 const report = (id: string) => r.reportOf(view, s.periodOf(tz, id)!);
 
-test('new artists are the ones this person never played before the period, all of them, ranked', () => {
+test('new artists are the ones this person never played before the period, ranked', () => {
 	const oct = report('2025-10');
 	expect(oct.newArtists.map((a) => [a.name, a.plays])).toEqual([['Bright Fields', 3], ['Cold Harbour', 1]]);
 	expect(oct.totals.newArtists).toBe(2);
 	expect(oct.delta.newArtists).toEqual({ diff: 1, pct: 100 });
+});
+
+test('only the top 10 new artists are listed, and the count covers all of them', async () => {
+	const { run } = await import('./db.js');
+	const { fromLocal } = await import('../time.js');
+	run("INSERT INTO users (id, display_name, timezone, created_at) VALUES (9, 'Sam', ?, 0)", tz);
+	for (let i = 0; i < 12; i++) {
+		run('INSERT INTO artists (id, name, key) VALUES (?, ?, ?)', 100 + i, `Newcomer ${i}`, `newcomer ${i}`);
+		run('INSERT INTO tracks (id, artist_id, name, key) VALUES (?, ?, ?, ?)', 100 + i, 100 + i, `Song ${i}`, `song ${i}`);
+		for (let n = 0; n <= i; n++)
+			run("INSERT INTO plays (user_id, track_id, artist_id, played_at, ms_played, source) VALUES (9, ?, ?, ?, 1000, 'sync')", 100 + i, 100 + i, fromLocal(tz, 2025, 5, 1 + n));
+	}
+	const june = r.reportOf({ ...view, ids: [9] }, s.periodOf(tz, '2025-06')!);
+	expect(june.totals.newArtists).toBe(12);
+	expect(june.newArtists.map((a) => a.name)).toEqual(Array.from({ length: 10 }, (_, k) => `Newcomer ${11 - k}`));
+});
+
+test('a period still under way is compared with the same stretch of the one before', () => {
+	vi.useFakeTimers({ now: Date.UTC(2026, 0, 5, 12), toFake: ['Date'] });
+	try {
+		const soFar = report('2026');
+		expect(soFar.period.partial).toBe(true);
+		// 2025 had plays, but none in its first five days.
+		expect(soFar.delta.plays).toEqual({ diff: 0, pct: null });
+		expect(report('2025').period.partial).toBe(false);
+	} finally {
+		vi.useRealTimers();
+	}
 });
 
 test('busiest day is a local calendar day, with its time listened and top songs', () => {

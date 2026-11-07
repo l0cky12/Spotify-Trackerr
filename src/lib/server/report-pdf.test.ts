@@ -6,7 +6,7 @@ import type { TopRow } from './stats.js';
 const row = (name: string, plays: number, artist: string | null = null): TopRow => ({ id: plays, name, artist, artist_id: null, image: null, plays, ms: plays * 200_000, first: 0, last: 0 });
 const same = { diff: 0, pct: 0 };
 const report = (plays: number, names: string[]): Report => ({
-	period: { id: '2025-10', label: 'Oct 2025', y: 2025, m: 9, prev: { id: '2025-09', label: 'Sep 2025' } },
+	period: { id: '2025-10', label: 'Oct 2025', y: 2025, m: 9, partial: false, prev: { id: '2025-09', label: 'Sep 2025' } },
 	who: 'Søren',
 	generatedOn: 'Nov 7, 2026',
 	totals: { plays, ms: plays * 200_000, artists: names.length, tracks: names.length, newArtists: names.length },
@@ -42,4 +42,10 @@ test('a period without plays renders a one-page PDF', async () => {
 	const pdf = await renderReportPdf(report(0, []), 'hours');
 	expect(isPdf(pdf)).toBe(true);
 	expect(new TextDecoder('latin1').decode(pdf).match(/\/Type \/Page\b/g)).toHaveLength(1);
+});
+
+test('new artists are only counted on the first page, with no list of them after the top lists', async () => {
+	const names = Array.from({ length: 200 }, (_, i) => `Artist ${i}`);
+	const pdf = await renderReportPdf({ ...report(500, names.slice(0, 10)), totals: { ...report(500, []).totals, newArtists: 200 } }, 'auto');
+	expect(new TextDecoder('latin1').decode(pdf).match(/\/Type \/Page\b/g)).toHaveLength(2);
 });

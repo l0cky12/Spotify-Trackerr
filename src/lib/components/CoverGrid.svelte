@@ -17,12 +17,13 @@
 <ol class="grid" {start} style:--min="{min}px">
 	{#each items as item, i (item.href ?? i)}
 		<li>
-			<a href={item.href} title="{item.name}: {fmt(item.plays)} plays, {listened(item.ms)}">
+			<!-- A tile is a link only when it has somewhere to go (shared Reports have no links in). -->
+			<svelte:element this={item.href ? 'a' : 'div'} class="tile" href={item.href} title="{item.name}: {fmt(item.plays)} plays, {listened(item.ms)}">
 				<span class="art"><Cover src={item.image} alt={item.name} size={220} {round} /><span class="rank">{start + i + 1}</span></span>
 				<strong>{item.name}</strong>
 				{#if item.sub}<small>{item.sub}</small>{/if}
 				<small class="fig">{figure(item)}</small>
-			</a>
+			</svelte:element>
 		</li>
 	{:else}
 		<li class="empty">No plays in this range.</li>
@@ -38,7 +39,7 @@
 		grid-template-columns: repeat(auto-fill, minmax(var(--min), 1fr));
 		gap: 16px 12px;
 	}
-	a {
+	.tile {
 		display: grid;
 		gap: 2px;
 		text-decoration: none;

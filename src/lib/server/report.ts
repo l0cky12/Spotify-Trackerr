@@ -6,7 +6,8 @@ type Counts = { plays: number; ms: number; artists: number; tracks: number; newA
 
 /** Everything the Reports page and its PDF show for one period, from one set of queries. */
 export type Report = {
-	period: { id: string; label: string; y: number; m: number | null; prev: { id: string; label: string } };
+	/** `partial` while the period is still going: totals so far, compared with the same stretch of the period before. */
+	period: { id: string; label: string; y: number; m: number | null; partial: boolean; prev: { id: string; label: string } };
 	/** Whose listening: a person's display name, or 'Everyone'. */
 	who: string;
 	generatedOn: string;
@@ -16,7 +17,7 @@ export type Report = {
 	albums: TopRow[];
 	artists: TopRow[];
 	genres: { name: string; plays: number; ms: number }[];
-	/** Every artist first played in the period, ranked like the top lists. */
+	/** The top 10 artists first played in the period, ranked like the top lists; `totals.newArtists` counts them all. */
 	newArtists: TopRow[];
 	busiest: { label: string; plays: number; ms: number; tracks: TopRow[] } | null;
 	series: { labels: string[]; cur: number[]; prev: number[] | null };
@@ -28,12 +29,15 @@ export type Report = {
 
 export function reportOf(view: View, period: Period): Report {
 	const scope: Scope = { ids: view.ids, since: period.since, until: period.until, rankBy: view.rankBy, tz: view.tz };
-	const prev: Scope = { ...scope, since: period.prev.since, until: period.prev.until };
+	// A period still under way is compared with the same length of time into the period before, not all of it.
+	const nowTs = Date.now() / 1000;
+	const partial = period.since <= nowTs && nowTs < period.until;
+	const prev: Scope = { ...scope, since: period.prev.since, until: partial ? Math.min(period.prev.until, period.prev.since + (nowTs - period.since)) : period.prev.until };
 	const fresh = newArtists(scope, -1);
 	const cur = { ...totals(scope), newArtists: fresh.length } as Counts;
 	const series = timeSeries(scope, []);
 	return {
-		period: { id: period.id, label: period.label, y: period.y, m: period.m ?? null, prev: { id: period.prev.id, label: period.prev.label } },
+		period: { id: period.id, label: period.label, y: period.y, m: period.m ?? null, partial, prev: { id: period.prev.id, label: period.prev.label } },
 		who: view.name,
 		generatedOn: formatDate(Date.now() / 1000, view.tz),
 		totals: cur,
@@ -42,7 +46,7 @@ export function reportOf(view: View, period: Period): Report {
 		albums: top('album', scope, 10),
 		artists: top('artist', scope, 10),
 		genres: genres(scope, 10).rows,
-		newArtists: fresh,
+		newArtists: fresh.slice(0, 10),
 		busiest: busiestOf(scope),
 		series: { labels: series.labels, cur: series.cur, prev: series.prev },
 		weekdays: series.grid.map((hours) => hours.reduce((a, b) => a + b, 0)),
