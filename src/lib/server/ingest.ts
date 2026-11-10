@@ -82,9 +82,11 @@ export function insertPlay(p: {
 	source: PlaySource;
 	durationMs: number | null;
 }) {
-	const win = Math.max(180, Math.round((p.durationMs ?? 0) / 1000) + 30);
-	const near = db_near.all(p.userId, p.trackId, p.playedAt - win, p.playedAt + win) as { played_at: number; source: string }[];
-	if (near.some((n) => n.source !== p.source || n.played_at === p.playedAt)) return false;
+	const win = (ms: number) => Math.max(180, Math.round(ms / 1000) + 30);
+	const own = Math.max(p.durationMs ?? 0, p.msPlayed);
+	const near = db_near.all(p.userId, p.trackId, p.playedAt - Math.max(win(own), 1800), p.playedAt + Math.max(win(own), 1800)) as { played_at: number; ms_played: number; source: string }[];
+	// A Takeout or scrobble play has no length of its own, so the stored copy's ms_played sizes the window.
+	if (near.some((n) => n.played_at === p.playedAt || (n.source !== p.source && Math.abs(n.played_at - p.playedAt) <= win(Math.max(own, n.ms_played))))) return false;
 	run(
 		'INSERT INTO plays (user_id, track_id, album_id, artist_id, played_at, ms_played, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
 		p.userId,
@@ -97,7 +99,7 @@ export function insertPlay(p: {
 	);
 	return true;
 }
-const db_near = db.prepare('SELECT played_at, source FROM plays WHERE user_id = ? AND track_id = ? AND played_at BETWEEN ? AND ?');
+const db_near = db.prepare('SELECT played_at, ms_played, source FROM plays WHERE user_id = ? AND track_id = ? AND played_at BETWEEN ? AND ?');
 
 /** One entry of an uploaded history file, whatever service it came from. A play with msPlayed null ran for an unknown time. */
 export type HistoryEntry =

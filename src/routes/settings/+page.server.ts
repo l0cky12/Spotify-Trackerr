@@ -15,9 +15,11 @@ import {
 	setLastfmUser,
 	setListenbrainzUser,
 	setOwnApp,
+	setScrobbleSource,
 	spotifyServerAppConfigured,
 	unlinkSpotify
 } from '#lib/server/connections.js';
+import type { ScrobbleSource } from '#lib/server/connections.js';
 import { syncUser } from '#lib/server/spotify.js';
 import { retryGenresWithLastfm } from '#lib/server/enrich.js';
 import { importEntries, readUploads } from '#lib/server/ingest.js';
@@ -169,6 +171,14 @@ export const actions = {
 	lastfmUnlink: async ({ locals }) => {
 		setLastfmUser(locals.user!.id, null);
 		return { section: 'lastfm', saved: true };
+	},
+	scrobbleSource: async ({ request, locals }) => {
+		const source = String((await request.formData()).get('source') ?? '') || null;
+		const u = connectionStatus(locals.user!);
+		const linked: Record<string, boolean> = { lastfm: !!u.lastfmUser, listenbrainz: !!u.listenbrainzUser };
+		if (source && !linked[source]) return fail(400, { section: 'youtube', error: 'Link that account first, under Last.fm or ListenBrainz.' });
+		setScrobbleSource(locals.user!.id, source as ScrobbleSource | null);
+		return { section: 'youtube', saved: true };
 	},
 	listenbrainzUnlink: async ({ locals }) => {
 		setListenbrainzUser(locals.user!.id, null);

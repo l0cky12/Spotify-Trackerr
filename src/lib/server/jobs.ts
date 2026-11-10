@@ -1,4 +1,5 @@
 import { syncAll, syncDue, creditStep } from './spotify.js';
+import { scrobblesDue } from './scrobbles.js';
 import { deezerStep, itunesStep, genreStep, retryGenresWithLastfm } from './enrich.js';
 
 /** A loop that runs `step` every `ms`, never overlapping itself, and logs instead of crashing. */
@@ -27,6 +28,8 @@ export function startJobs() {
 	setTimeout(() => syncAll().catch((e) => console.error('sync failed:', e)), 5000).unref();
 	// Each person picks how often they sync; checking every minute keeps them within a minute of it.
 	every(60_000, syncDue);
+	// Its own loop, so a first sync that brings in years of scrobbles never holds up Spotify sync.
+	every(60_000, scrobblesDue);
 	// Deezer allows 50 requests / 5 s; one song costs 1-3 requests, so 2.5 songs/s stays under.
 	every(400, deezerStep);
 	every(3500, itunesStep);

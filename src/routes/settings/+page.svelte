@@ -17,6 +17,7 @@
 		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
+		{ id: 'youtube', group: 'Connections', title: 'YouTube Music', alert: !!data.u.scrobbleError, body: youtubeSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'mcp', group: 'Connections', title: 'AI assistant', alert: false, body: mcpSection },
 		{ id: 'import', group: 'Your data', title: 'Import your history', alert: false, body: importSection },
@@ -338,6 +339,50 @@
 		{/if}
 	</p>
 	{#if data.admin}<p><code>{data.listenbrainzCallback}</code></p>{/if}
+{/if}
+{/snippet}
+
+{#snippet youtubeSection()}
+<p>YouTube Music doesn't let other apps read what you play, so your YouTube Music listening comes here in two steps.</p>
+<h3 class="sub">1. Your history so far</h3>
+<p>
+	Export it from Google Takeout and upload it under <a href="?section=import">Import your history</a>. In Takeout, choose JSON for history under
+	<strong>Multiple formats</strong>; the HTML file can't be read.
+</p>
+<h3 class="sub">2. New plays</h3>
+<p>
+	Set up a scrobbler that sends what you play to Last.fm or ListenBrainz: <a href="https://web-scrobbler.com/" target="_blank" rel="noopener">Web Scrobbler</a>
+	in your browser, or <a href="https://github.com/kawaiiDango/pano-scrobbler" target="_blank" rel="noopener">Pano Scrobbler</a> on your phone. Link that account under
+	<a href="?section=lastfm">Last.fm</a> or <a href="?section=listenbrainz">ListenBrainz</a>, then pick it here.
+</p>
+<form method="POST" action="?section=youtube&/scrobbleSource" use:enhance={() => ({ update }) => update({ reset: false })} class="row">
+	<label>
+		Count scrobbles as plays
+		<select name="source" value={data.u.scrobbleSource ?? ''}>
+			<option value="">Off</option>
+			<option value="lastfm" disabled={!data.u.lastfmUser}>Last.fm{data.u.lastfmUser ? ` (${data.u.lastfmUser})` : ' (not linked)'}</option>
+			<option value="listenbrainz" disabled={!data.u.listenbrainzUser}>ListenBrainz{data.u.listenbrainzUser ? ` (${data.u.listenbrainzUser})` : ' (not linked)'}</option>
+		</select>
+	</label>
+	<button class="secondary">Save</button>
+</form>
+{#if msg('youtube')?.error}<p class="error">{msg('youtube')?.error}</p>{/if}
+{#if msg('youtube')?.saved}<p class="ok">Saved.</p>{/if}
+{#if data.u.scrobbleSource}
+	{#if data.u.scrobbleError}
+		<p class="error">Last check failed: {data.u.scrobbleError}</p>
+	{:else if data.u.scrobblesThrough}
+		<p>
+			<span class="ok">Counting.</span> New scrobbles are checked every {data.u.syncMinutes} minutes; the newest counted is from
+			{formatWhen(data.u.scrobblesThrough, data.u.timezone)}.
+		</p>
+	{:else}
+		<p>The first check brings in all your scrobbles, which can take a few minutes for a long history.</p>
+	{/if}
+	<p class="muted small">
+		A scrobble of a song you also synced from Spotify or imported from Takeout around the same time counts once. Switching accounts keeps the plays already
+		counted.
+	</p>
 {/if}
 {/snippet}
 

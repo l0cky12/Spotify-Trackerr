@@ -247,7 +247,10 @@ export function connectionStatus(u: Row) {
 		ownClientId: (u.own_client_id as string | null) ?? null,
 		usesOwnApp: !!u.spotify_own_app,
 		lastfmUser: (u.lastfm_user as string | null) ?? null,
-		listenbrainzUser: (u.listenbrainz_user as string | null) ?? null
+		listenbrainzUser: (u.listenbrainz_user as string | null) ?? null,
+		scrobbleSource: (u.scrobble_source as ScrobbleSource | null) ?? null,
+		scrobbleError: (u.scrobble_error as string | null) ?? null,
+		scrobblesThrough: (u.scrobble_cursor as number | undefined) || null
 	};
 }
 
@@ -301,13 +304,8 @@ export async function lastfmUsername(token: string) {
 	return name;
 }
 
-/** Sets (or with null, removes) the person's Last.fm username. Discover picks belong to the old one, so they go too. */
-export function setLastfmUser(userId: number, username: string | null) {
-	tx(() => {
-		run('UPDATE users SET lastfm_user = ? WHERE id = ?', username, userId);
-		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
-	});
-}
+/** Sets (or with null, removes) the person's Last.fm username. */
+export const setLastfmUser = (userId: number, username: string | null) => setScrobbleUser(userId, 'lastfm', username);
 
 // ---- ListenBrainz ----
 
@@ -336,10 +334,37 @@ export async function listenbrainzUsername(code: string, redirect_uri: string) {
 	return me.sub as string;
 }
 
-/** Sets (or with null, removes) the person's ListenBrainz username. Discover picks belong to the old one, so they go too. */
-export function setListenbrainzUser(userId: number, username: string | null) {
+/** Sets (or with null, removes) the person's ListenBrainz username. */
+export const setListenbrainzUser = (userId: number, username: string | null) => setScrobbleUser(userId, 'listenbrainz', username);
+
+// ---- Scrobbles ----
+
+export type ScrobbleSource = 'lastfm' | 'listenbrainz';
+const SCROBBLE_USER: Record<ScrobbleSource, 'lastfm_user' | 'listenbrainz_user'> = { lastfm: 'lastfm_user', listenbrainz: 'listenbrainz_user' };
+
+/** The account whose scrobbles count as this person's plays, or null when they count none. */
+export function scrobbleAccount(u: Row): { source: ScrobbleSource; username: string } | null {
+	const source = u.scrobble_source as ScrobbleSource | null;
+	const username = source && (u[SCROBBLE_USER[source]] as string | null);
+	return source && username ? { source, username } : null;
+}
+
+/**
+ * Discover picks belong to the old account, so they go. When the account whose scrobbles count as plays changes,
+ * counting starts over from its first scrobble (or stops, when unlinked); plays already counted stay.
+ */
+function setScrobbleUser(userId: number, source: ScrobbleSource, username: string | null) {
+	const col = SCROBBLE_USER[source];
 	tx(() => {
-		run('UPDATE users SET listenbrainz_user = ? WHERE id = ?', username, userId);
+		const u = get(`SELECT scrobble_source, ${col} name FROM users WHERE id = ?`, userId);
+		run(`UPDATE users SET ${col} = ? WHERE id = ?`, username, userId);
+		if (u?.scrobble_source === source && u.name !== username)
+			run('UPDATE users SET scrobble_source = ?, scrobble_cursor = 0, scrobble_error = NULL WHERE id = ?', username ? source : null, userId);
 		run('DELETE FROM cache WHERE key = ?', `discover:${userId}`);
 	});
+}
+
+/** Picks which linked account's scrobbles count as plays (null: none). Switching starts counting over from the new account's first scrobble. */
+export function setScrobbleSource(userId: number, source: ScrobbleSource | null) {
+	run('UPDATE users SET scrobble_source = ?, scrobble_cursor = 0, scrobble_error = NULL WHERE id = ? AND scrobble_source IS NOT ?', source, userId, source);
 }

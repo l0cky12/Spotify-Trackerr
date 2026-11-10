@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS users (
 	own_client_secret TEXT,
 	lastfm_user TEXT,
 	listenbrainz_user TEXT,
+	scrobble_source TEXT CHECK (scrobble_source IN ('lastfm', 'listenbrainz')),
+	scrobble_cursor INTEGER NOT NULL DEFAULT 0,
+	scrobble_error TEXT,
 	home_location TEXT,
 	show_miles INTEGER NOT NULL DEFAULT 100,
 	created_at INTEGER NOT NULL
@@ -221,6 +224,10 @@ if (!userColumns.includes('home_location')) db.exec('ALTER TABLE users ADD COLUM
 if (!userColumns.includes('show_miles')) db.exec('ALTER TABLE users ADD COLUMN show_miles INTEGER NOT NULL DEFAULT 100');
 // How often new plays sync, picked in Settings (5–30 minutes).
 if (!userColumns.includes('sync_minutes')) db.exec('ALTER TABLE users ADD COLUMN sync_minutes INTEGER NOT NULL DEFAULT 5');
+// Which scrobbles count as plays (null = none), and the time of the newest one counted so far. See scrobbles.ts.
+if (!userColumns.includes('scrobble_source')) db.exec("ALTER TABLE users ADD COLUMN scrobble_source TEXT CHECK (scrobble_source IN ('lastfm', 'listenbrainz'))");
+if (!userColumns.includes('scrobble_cursor')) db.exec('ALTER TABLE users ADD COLUMN scrobble_cursor INTEGER NOT NULL DEFAULT 0');
+if (!userColumns.includes('scrobble_error')) db.exec('ALTER TABLE users ADD COLUMN scrobble_error TEXT');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');
