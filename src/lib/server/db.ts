@@ -248,6 +248,14 @@ if (!PLAY_SOURCES.every((s) => playsSql.includes(`'${s}'`))) {
 	}
 }
 
+// Takeout and scrobble plays of a song whose length isn't known yet are saved as 0 ms; once anything learns the
+// length (artwork lookup, a Spotify sync of the same song), they count as the whole song.
+db.exec(`CREATE TRIGGER IF NOT EXISTS plays_fill_length AFTER UPDATE OF duration_ms ON tracks
+	WHEN OLD.duration_ms IS NULL AND NEW.duration_ms IS NOT NULL
+	BEGIN
+		UPDATE plays SET ms_played = NEW.duration_ms WHERE track_id = NEW.id AND ms_played = 0 AND source IN ('takeout', 'scrobble');
+	END`);
+
 export const now = () => Math.floor(Date.now() / 1000);
 
 // Rows come straight from SQLite; typed loosely on purpose.

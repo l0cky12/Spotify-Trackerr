@@ -19,7 +19,7 @@
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'mcp', group: 'Connections', title: 'AI assistant', alert: false, body: mcpSection },
-		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
+		{ id: 'import', group: 'Your data', title: 'Import your history', alert: false, body: importSection },
 		{ id: 'bans', group: 'Your data', title: 'Banned', alert: false, body: bansSection },
 		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
 		{ id: 'password', group: 'Profile', title: data.u.hasPassword ? 'Username and password' : 'Add a username and password', alert: false, body: passwordSection },
@@ -32,7 +32,7 @@
 
 <h1>Settings</h1>
 
-{#if data.welcome}<p class="ok">Welcome! Your account is ready. Import your Spotify history to fill in the past.</p>{/if}
+{#if data.welcome}<p class="ok">Welcome! Your account is ready. Import your Spotify or YouTube Music history to fill in the past.</p>{/if}
 {#if data.error}<p class="error">{data.error}</p>{/if}
 
 <div class="layout">
@@ -107,10 +107,16 @@
 
 {#snippet importSection()}
 <p>
-	Request <strong>Extended streaming history</strong> on Spotify's
+	<strong>Spotify:</strong> request <strong>Extended streaming history</strong> on Spotify's
 	<a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">privacy page</a>. It can take up to 30 days to arrive. Upload the .zip, or the
-	<code>Streaming_History_Audio_*.json</code> files inside it. Importing again is safe: plays already here are skipped.
+	<code>Streaming_History_Audio_*.json</code> files inside it.
 </p>
+<p>
+	<strong>YouTube Music:</strong> on <a href="https://takeout.google.com/" target="_blank" rel="noopener">Google Takeout</a>, choose only
+	<strong>YouTube and YouTube Music</strong>, set it to include just history, and under <strong>Multiple formats</strong> pick JSON for history. Upload the .zip, or the
+	<code>watch-history.json</code> inside it. Takeout doesn't say how long you listened, so each song counts as its full length once its length is known.
+</p>
+<p>Importing again is safe: plays already here are skipped.</p>
 <form
 	method="POST"
 	action="?section=import&/import"
