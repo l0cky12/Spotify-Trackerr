@@ -18,7 +18,7 @@
 		...(data.googleLogin || data.u.googleLinked || data.admin ? [{ id: 'google', group: 'Connections', title: 'Google', alert: false, body: googleSection }] : []),
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
-		{ id: 'youtube', group: 'Connections', title: 'YouTube Music', alert: !!data.u.scrobbleError, body: youtubeSection },
+		{ id: 'youtube', group: 'Connections', title: 'YouTube Music', alert: !!data.u.scrobbleError || (data.u.youtubePull && !!data.u.youtubeError), body: youtubeSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'mcp', group: 'Connections', title: 'AI assistant', alert: false, body: mcpSection },
 		{ id: 'import', group: 'Your data', title: 'Import your history', alert: false, body: importSection },
@@ -347,7 +347,7 @@
 {#if data.u.googleLinked}
 	<p><span class="ok">Linked</span>{#if data.u.googleEmail} as {data.u.googleEmail}{/if}. You can log in with Google.</p>
 	<form method="POST" action="?section=google&/googleUnlink" use:enhance><button class="secondary">Unlink Google</button></form>
-	<p class="muted small">Google is only used to log you in. It doesn't bring in any listening; for YouTube Music, see <a href="?section=youtube">YouTube Music</a>.</p>
+	<p class="muted small">Logging in with Google reads none of your listening. To pull your YouTube Music plays from Google, see <a href="?section=youtube">YouTube Music</a>.</p>
 {:else if data.googleLogin}
 	<p>Link your Google account to log in with Google. It's only used to log you in, not to read your listening.</p>
 	<a class="button" href="/auth/google?mode=link">Link Google</a>
@@ -381,7 +381,37 @@
 {/snippet}
 
 {#snippet youtubeSection()}
-<p>YouTube Music doesn't let other apps read what you play, so your YouTube Music listening comes here in two steps.</p>
+{#if data.googleLogin}
+	<p>YouTube Music has no live feed of what you play. Google can send this server your YouTube history once a day, or you can bring it here yourself in two steps.</p>
+	<h3 class="sub">Pull from Google every day</h3>
+	{#if data.u.youtubePull}
+		{#if data.u.youtubeJob}
+			<p>Google is preparing your history. That can take a few minutes to a few hours.</p>
+		{:else if data.u.youtubePulledAt}
+			<p><span class="ok">Pulling.</span> Last pulled {formatWhen(data.u.youtubePulledAt, data.u.timezone)}. Plays from the last day come with the next pull.</p>
+		{:else}
+			<p>The first pull starts within a few minutes and brings in your whole YouTube Music history.</p>
+		{/if}
+		{#if data.u.youtubeError}<p class="error">Last try failed: {data.u.youtubeError}</p>{/if}
+		<form method="POST" action="?section=youtube&/youtubeStop" use:enhance><button class="secondary">Stop pulling</button></form>
+	{:else}
+		{#if data.u.youtubeError}<p class="error">{data.u.youtubeError}</p>{/if}
+		<p>
+			Let this server read your YouTube history from Google once, and it pulls your YouTube Music plays every day. Other YouTube videos are skipped. On
+			Google's screen, allow access for 30 or 180 days; access for one time pulls once.
+		</p>
+		<a class="button" href="/auth/google?mode=youtube">Connect YouTube history</a>
+	{/if}
+	{#if data.admin}
+		<p class="muted small">
+			Pulling needs the Data Portability API turned on in the same Google Cloud project as this server's Google client, and the
+			<code>dataportability.myactivity.youtube</code> scope added to its OAuth consent screen. Google has to verify the app for that Restricted scope; until
+			then only the test users listed on the consent screen can connect.
+		</p>
+	{/if}
+{:else}
+	<p>YouTube Music has no live feed of what you play, so your YouTube Music listening comes here in two steps.</p>
+{/if}
 <h3 class="sub">1. Your history so far</h3>
 <p>
 	Export it from Google Takeout and upload it under <a href="?section=import">Import your history</a>. In Takeout, choose JSON for history under

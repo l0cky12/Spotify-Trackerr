@@ -31,7 +31,7 @@ const ytm = (title: string, channel: string, time: string, extra: Record<string,
 const history = [
 	ytm('You Got One Too', 'Idle Garden - Topic', '2025-04-28T12:23:47.000Z'),
 	ytm('Northern Lights', 'Glass Harbor', '2025-04-28T12:30:00.000Z'),
-	{ ...ytm('Cat video', 'Some Vlogger', '2025-04-28T13:00:00.000Z'), header: 'YouTube' },
+	{ ...ytm('Cat video', 'Some Vlogger', '2025-04-28T13:00:00.000Z'), header: 'YouTube', titleUrl: 'https://www.youtube.com/watch?v=c4tV1d30' },
 	ytm('https://music.youtube.com/watch?v=gone', '', '2025-04-28T14:00:00.000Z', { subtitles: undefined }),
 	ytm('Untitled', 'x', '2025-04-28T15:00:00.000Z', { subtitles: [] })
 ];
@@ -88,4 +88,38 @@ test("a song's length, once looked up, fills in its Takeout plays and counts for
 
 	m.importEntries(3, m.readUploads([{ name: 'watch-history.json', data: json([ytm('Far Signal', 'Low Orbit - Topic', '2025-06-02T10:00:00.000Z')]) }]));
 	expect(minutes()).toBe(430_000);
+});
+
+const activity = (title: string, titleUrl: string, channel: string | null, time: string) => ({
+	header: 'YouTube',
+	title,
+	titleUrl,
+	...(channel && { subtitles: [{ name: channel, url: 'https://www.youtube.com/channel/UC2' }] }),
+	time,
+	products: ['YouTube'],
+	activityControls: ['YouTube watch history']
+});
+
+test('a YouTube Music pull keeps only the YouTube Music watches from the activity Google exports', () => {
+	dbm.run("INSERT INTO users (id, display_name, timezone, created_at) VALUES (4, 'd', 'UTC', 0)");
+	const zip = zipSync({
+		'Portability/My Activity/YouTube/MyActivity.json': json([
+			activity('Watched Quiet Field', 'https://music.youtube.com/watch?v=q1', 'Moss Choir - Topic', '2025-07-01T09:00:00.000Z'),
+			activity('Watched How to fix a bike', 'https://www.youtube.com/watch?v=b1', 'Fix It', '2025-07-01T09:05:00.000Z'),
+			activity('Searched for moss choir', 'https://music.youtube.com/search?q=moss+choir', null, '2025-07-01T09:10:00.000Z'),
+			activity('Visited Moss Choir', 'https://music.youtube.com/channel/UC2', 'Moss Choir - Topic', '2025-07-01T09:15:00.000Z')
+		]),
+		'Portability/archive_browser.json': json({ note: 'not a list of records' })
+	});
+	const sum = m.importEntries(4, [{ name: 'YouTube Music pull', entries: m.readActivityArchive(zip) }]);
+	expect(sum).toMatchObject({ files: ['YouTube Music pull'], added: 1, skipped_other: 3 });
+	expect(playsOf(4)).toMatchObject([{ artist: 'Moss Choir', track: 'Quiet Field', played_at: Date.parse('2025-07-01T09:00:00Z') / 1000, source: 'takeout' }]);
+	expect(dbm.get("SELECT files, added FROM imports WHERE user_id = 4")).toEqual({ files: 'YouTube Music pull', added: 1 });
+});
+
+test('a YouTube Music pull also reads activity Google sends as a bare .json file', () => {
+	const bare = json([activity('Watched Low Bloom', 'https://music.youtube.com/watch?v=l1', 'Ivy Static - Topic', '2025-07-02T10:00:00.000Z')]);
+	expect(m.readActivityArchive(bare)).toEqual([
+		{ kind: 'play', artist: 'Ivy Static', title: 'Low Bloom', album: null, playedAt: Date.parse('2025-07-02T10:00:00Z') / 1000, msPlayed: null, source: 'takeout' }
+	]);
 });
