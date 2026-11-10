@@ -139,15 +139,19 @@ function spotifyEntry(e: {
 }
 
 /**
- * Google Takeout's YouTube watch history (watch-history.json). Only YouTube Music plays count. YouTube Music
- * names an auto-generated artist channel "<Artist> - Topic", and a removed video keeps only its address as the title.
- * Takeout says neither how long a song ran nor its album.
+ * One YouTube activity record, from Takeout's watch-history.json or a YouTube Music pull. Only YouTube Music plays count:
+ * Takeout heads them "YouTube Music", while the pull may head them plain "YouTube", so a music.youtube.com address
+ * counts too. The pull also brings searches and page visits, which aren't /watch?v= links. YouTube Music names an
+ * auto-generated artist channel "<Artist> - Topic", and a removed video keeps only its address as the title.
+ * Neither says how long a song ran nor its album.
  */
-function takeoutEntry(e: { header?: string; title?: string; subtitles?: { name?: string }[]; time?: string }): HistoryEntry {
+function takeoutEntry(e: { header?: string; title?: string; titleUrl?: string; subtitles?: { name?: string }[]; time?: string }): HistoryEntry {
 	const title = e.title?.replace(/^Watched /, '').trim();
 	const artist = e.subtitles?.[0]?.name?.replace(/ - Topic$/, '').trim();
 	const playedAt = Math.floor(Date.parse(e.time ?? '') / 1000);
-	if (e.header !== 'YouTube Music' || !title || !artist || /^https?:\/\//.test(title) || !Number.isFinite(playedAt)) return other;
+	const music = e.header === 'YouTube Music' || /^https:\/\/music\.youtube\.com\//.test(e.titleUrl ?? '');
+	if (e.titleUrl && !/\/watch\?v=/.test(e.titleUrl)) return other;
+	if (!music || !title || !artist || /^https?:\/\//.test(title) || !Number.isFinite(playedAt)) return other;
 	return { kind: 'play', artist, title, album: null, playedAt, msPlayed: null, source: 'takeout' };
 }
 
@@ -189,6 +193,15 @@ export function readUploads(files: { name: string; data: Uint8Array }[]) {
 			"No listening history found. Upload Spotify's Streaming_History_Audio_*.json files or the .zip Spotify emailed you, or YouTube Music's watch-history.json or the Google Takeout .zip."
 		);
 	return out;
+}
+
+/** Reads the YouTube activity Google exports for a YouTube Music pull: a .zip of .json files, or one bare .json file. */
+export function readActivityArchive(data: Uint8Array): HistoryEntry[] {
+	const files = data[0] === 0x50 && data[1] === 0x4b ? Object.values(unzipSync(data, { filter: (f) => /\.json$/i.test(f.name) })) : [data];
+	return files.flatMap((f) => {
+		const json: unknown = JSON.parse(strFromU8(f));
+		return Array.isArray(json) ? json.map(takeoutEntry) : [];
+	});
 }
 
 function parse(name: string, data: Uint8Array): HistoryEntry[] {

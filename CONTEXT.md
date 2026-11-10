@@ -29,15 +29,19 @@ _Avoid_: reauth, expired, broken
 ### Plays and reports
 
 **Play**:
-One listen of a song by one person: which song, when it ended, how long it ran, and where it came from (a Spotify import, a sync, a Takeout import or a scrobble sync). Every stat is counted from plays, so fixing a play (its song or its time) fixes every page.
+One listen of a song by one person: which song, when it ended, how long it ran, and where it came from (a Spotify import, a sync, a Takeout import, a YouTube Music pull or a scrobble sync). Every stat is counted from plays, so fixing a play (its song or its time) fixes every page.
 _Avoid_: scrobble (that's the Last.fm or ListenBrainz record a play can come from), listen (as a noun), stream
 
 **Takeout import**:
 Uploading the YouTube watch history from Google Takeout (watch-history.json, or the Takeout .zip) to add a person's past YouTube Music plays. Other YouTube videos are skipped. Takeout gives no length, so these plays count as the whole song once its length is known.
 _Avoid_: YouTube sync, Google import
 
+**YouTube Music pull**:
+The server asking Google, once a day, for a person's YouTube history through Google's Data Portability API, and saving its YouTube Music plays the same way a Takeout import does. The person gives access once in Settings, apart from Google login; access for one time only pulls once. Google can take hours to prepare each pull, so plays arrive about a day late.
+_Avoid_: YouTube sync, Google import, YouTube import
+
 **Scrobble sync**:
-Saving a person's Last.fm or ListenBrainz scrobbles as plays, from the one account they picked. It's off until they pick one, and its first run brings in their whole scrobble history. It is how new YouTube Music listening arrives, through a scrobbler app.
+Saving a person's Last.fm or ListenBrainz scrobbles as plays, from the one account they picked. It's off until they pick one, and its first run brings in their whole scrobble history. It is one way new YouTube Music listening arrives, through a scrobbler app.
 _Avoid_: Last.fm import, scrobble import, YouTube sync
 
 **Ban**:

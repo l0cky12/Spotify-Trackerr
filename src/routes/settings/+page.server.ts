@@ -22,6 +22,7 @@ import {
 	setOwnApp,
 	setScrobbleSource,
 	spotifyServerAppConfigured,
+	stopYouTubePull,
 	unlinkGoogle,
 	unlinkSpotify
 } from '#lib/server/connections.js';
@@ -196,6 +197,10 @@ export const actions = {
 		if (source && !linked[source]) return fail(400, { section: 'youtube', error: 'Link that account first, under Last.fm or ListenBrainz.' });
 		setScrobbleSource(locals.user!.id, source as ScrobbleSource | null);
 		return { section: 'youtube', saved: true };
+	},
+	youtubeStop: async ({ locals }) => {
+		await stopYouTubePull(locals.user!.id);
+		return { section: 'youtube' };
 	},
 	listenbrainzUnlink: async ({ locals }) => {
 		setListenbrainzUser(locals.user!.id, null);

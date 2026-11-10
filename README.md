@@ -5,8 +5,8 @@ See your top songs, albums, artists, and genres; explore how your listening chan
 and revisit any year's music. New plays sync from Spotify every 5 to 30 minutes (your pick), and Spotify's
 extended streaming history export fills in the past.
 
-YouTube Music listening comes in too: import its history from Google Takeout, and count your
-Last.fm or ListenBrainz scrobbles as plays to keep it current. Optional Last.fm and ListenBrainz
+YouTube Music listening comes in too: let the server pull it from Google once a day, import its
+history from Google Takeout, or count your Last.fm or ListenBrainz scrobbles as plays. Optional Last.fm and ListenBrainz
 connections also help Discover pick new music from more of your listening. Your dashboards and
 history use the plays synced or imported into this app.
 
@@ -54,8 +54,9 @@ recommendation picks. No personal listening data or real connected accounts are 
 - **Share with people on your server.** Make your listening visible to other signed-in users,
   browse their dashboards and histories through People, or view everyone's shared listening
   together. Visibility is controlled in Settings.
-- **Track YouTube Music.** Import your YouTube Music history from Google Takeout, and count the
-  scrobbles a scrobbler sends to Last.fm or ListenBrainz as plays. See [YouTube Music](#youtube-music).
+- **Track YouTube Music.** Let the server pull your YouTube Music plays from Google every day,
+  import your history from Google Takeout, or count the scrobbles a scrobbler sends to Last.fm or
+  ListenBrainz as plays. See [YouTube Music](#youtube-music).
 - **Manage your connections.** Settings has separate sections for Spotify, your own Spotify
   app, Google, Last.fm, ListenBrainz, and YouTube Music, alongside history import, preferences,
   and account controls.
@@ -216,6 +217,11 @@ https name.
    win over Settings. The login page then shows *Sign in with Google* for everyone, and each person
    can link Google in *Settings > Google* without entering any ID or secret of their own. Google sign-in reads no
    listening. A Google account that isn't linked yet creates an account only while sign-up is open.
+   For the YouTube Music pull, also turn on the
+   [Data Portability API](https://console.cloud.google.com/apis/library/dataportability.googleapis.com)
+   in the same project and add the `https://www.googleapis.com/auth/dataportability.myactivity.youtube`
+   scope to the OAuth consent screen. That scope is Restricted: until Google verifies the app, only
+   the test users listed on the consent screen can connect.
 7. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
    and upload the zip in Settings when it arrives (up to 30 days). For YouTube Music, see below.
 
@@ -224,24 +230,32 @@ Spotify ends each link 6 months after sign-in. The app warns two weeks ahead; cl
 
 ## YouTube Music
 
-YouTube Music has no API that shows what you played, and signing in with Google doesn't change
-that. Your YouTube Music listening comes in two ways:
+YouTube Music has no live feed of what you play, and signing in with Google doesn't read any. Your
+YouTube Music listening comes in up to three ways:
 
-1. **Your history so far.** At https://takeout.google.com, choose only *YouTube and YouTube
+1. **Pulled from Google every day.** When Google sign-in is set up (see step 6 above), click
+   *Connect YouTube history* in *Settings > YouTube Music* and allow access on Google's screen.
+   This is a separate permission from signing in. Once a day the server asks Google, through its
+   Data Portability API, for your YouTube history since the last pull, waits for Google to prepare
+   it (minutes to hours), and saves the YouTube Music plays in it. The first pull brings in your
+   whole history. Choose access for 30 or 180 days to keep pulling; access for one time pulls once.
+   *Stop pulling* removes the server's access at Google.
+2. **Your history so far.** At https://takeout.google.com, choose only *YouTube and YouTube
    Music*, include only history, and under *Multiple formats* choose JSON for history. Upload the
    .zip, or the `watch-history.json` inside it, in *Settings > Import your history*. Only YouTube
    Music plays count; other YouTube videos are skipped. The HTML version of the history can't be
    read.
-2. **New plays.** Install a scrobbler that sends what you play to Last.fm or ListenBrainz, such as
-   [Web Scrobbler](https://web-scrobbler.com/) in your browser or
+3. **New plays as you listen.** Install a scrobbler that sends what you play to Last.fm or
+   ListenBrainz, such as [Web Scrobbler](https://web-scrobbler.com/) in your browser or
    [Pano Scrobbler](https://github.com/kawaiiDango/pano-scrobbler) on Android. Link that account in
    *Settings > Last.fm* or *Settings > ListenBrainz*, then pick it under *Count scrobbles as plays*
    in *Settings > YouTube Music*. The first sync brings in your whole scrobble history; after that,
    new scrobbles are checked on your sync interval. A scrobble of a song you also imported from
    Takeout or synced from Spotify around the same time counts once.
 
-Takeout and scrobbles don't say how long you listened. Those plays count as the song's full length
-once its length is known (from the artwork lookup, ListenBrainz, or Spotify), and as 0 minutes
+A play that is both pulled from Google and uploaded from Takeout counts once. Pulls, Takeout and
+scrobbles don't say how long you listened. Those plays count as the song's full length once its
+length is known (from the artwork lookup, ListenBrainz, or Spotify), and as 0 minutes
 until then.
 
 ## Shows near you

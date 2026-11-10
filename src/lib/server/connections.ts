@@ -3,10 +3,12 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { db, DATA_DIR, userColumns, all, get, run, now, tx, setting, setSetting, type Row } from './db.js';
 import { lastfm, getJson, UA } from './enrich.js';
+import { importEntries, readActivityArchive, type HistoryEntry } from './ingest.js';
 
 // A person's Connections: their Spotify link (tokens, which app it went through, sync state), their Last.fm and ListenBrainz usernames
-// and which one's scrobbles count as plays, and the Google account they log in with,
-// plus the server's own Spotify and Last.fm apps. Nothing outside this file reads those columns or knows they're encrypted.
+// and which one's scrobbles count as plays, the Google account they log in with, and their YouTube Music pull (its Google token,
+// the export Google is preparing, when it last pulled, and its last error), plus the server's own Spotify, Last.fm and Google apps.
+// Nothing outside this file reads those columns or knows they're encrypted.
 
 // playlist-modify-private is for Playlists; links made before it was added get a 403 there until the person reconnects.
 const SCOPES = 'user-read-recently-played user-read-currently-playing playlist-modify-private';
@@ -253,7 +255,11 @@ export function connectionStatus(u: Row) {
 		scrobbleError: (u.scrobble_error as string | null) ?? null,
 		scrobblesThrough: (u.scrobble_cursor as number | undefined) || null,
 		googleLinked: !!u.google_id,
-		googleEmail: (u.google_email as string | null) ?? null
+		googleEmail: (u.google_email as string | null) ?? null,
+		youtubePull: !!u.youtube_refresh,
+		youtubeJob: !!u.youtube_job,
+		youtubePulledAt: (u.youtube_pulled_at as number | null) ?? null,
+		youtubeError: (u.youtube_error as string | null) ?? null
 	};
 }
 
@@ -278,6 +284,29 @@ export function setGoogleServerApp(id: string, secret: string) {
 }
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+/** Read access to the person's YouTube activity through Google's Data Portability API, for a YouTube Music pull. */
+const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/dataportability.myactivity.youtube';
+
+/** Google refused a token request; `code` is its OAuth error, such as invalid_grant. */
+class GoogleTokenError extends Error {
+	constructor(public code: string) {
+		super(`Google refused the token request (${code}).`);
+	}
+}
+
+/** Any grant at Google's token endpoint, as this server's Google client. */
+async function googleToken(grant: Record<string, string>): Promise<{ access_token: string; refresh_token?: string; scope?: string }> {
+	const app = googleApp();
+	if (!app) throw new Error("This server's Google client isn't set up.");
+	const res = await fetch(GOOGLE_TOKEN_URL, {
+		method: 'POST',
+		body: new URLSearchParams({ ...grant, client_id: app.id, client_secret: app.secret }),
+		signal: AbortSignal.timeout(10_000)
+	});
+	const json = await res.json().catch(() => ({}));
+	if (!res.ok) throw new GoogleTokenError(typeof json.error === 'string' ? json.error : `HTTP ${res.status}`);
+	return json;
+}
 
 /** Asks Google whether a client ID and secret belong together: trading a made-up code fails with invalid_client unless both are right. */
 export async function checkGoogleApp(id: string, secret: string, redirect_uri: string): Promise<'ok' | 'rejected' | 'unreachable'> {
@@ -295,22 +324,23 @@ export async function checkGoogleApp(id: string, secret: string, redirect_uri: s
 	}
 }
 
-export const googleAuthUrl = (redirect_uri: string, state: string) =>
+/** Where to send the person: Google login, or with `youtube` the separate consent for a YouTube Music pull, which asks only for the pull's scope. */
+export const googleAuthUrl = (redirect_uri: string, state: string, youtube = false) =>
 	'https://accounts.google.com/o/oauth2/v2/auth?' +
-	new URLSearchParams({ client_id: googleApp()!.id, redirect_uri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
+	new URLSearchParams({
+		client_id: googleApp()!.id,
+		redirect_uri,
+		response_type: 'code',
+		scope: youtube ? YOUTUBE_SCOPE : 'openid email profile',
+		state,
+		...(youtube ? { prompt: 'consent', access_type: 'offline' } : { prompt: 'select_account' })
+	});
 
 export type GoogleAccount = { googleId: string; email: string | null; name: string | null };
 
 /** Trades the code from Google's sign-in redirect for the account it belongs to. */
 export async function exchangeGoogleCode(code: string, redirect_uri: string): Promise<GoogleAccount> {
-	const app = googleApp()!;
-	const res = await fetch(GOOGLE_TOKEN_URL, {
-		method: 'POST',
-		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: app.id, client_secret: app.secret }),
-		signal: AbortSignal.timeout(10_000)
-	});
-	if (!res.ok) throw new Error(`Google returned ${res.status}`);
-	const { access_token } = await res.json();
+	const { access_token } = await googleToken({ grant_type: 'authorization_code', code, redirect_uri });
 	const me = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(10_000) });
 	if (!me.ok) throw new Error(`Google returned ${me.status}`);
 	const p = await me.json();
@@ -326,6 +356,131 @@ export function saveGoogleLink(userId: number, account: GoogleAccount) {
 
 export function unlinkGoogle(userId: number) {
 	run('UPDATE users SET google_id = NULL, google_email = NULL WHERE id = ?', userId);
+}
+
+// ---- YouTube Music pull ----
+// Google's Data Portability API exports a person's YouTube activity on request: start an export, poll until it's ready,
+// then download it from signed URLs.
+// The scope is Restricted, so it gets its own consent screen; on Google login's screen it would warn everyone until Google verifies the app.
+
+const PORTABILITY = 'https://dataportability.googleapis.com/v1/';
+const PULL_EVERY = 86400;
+const PULL_REVOKED = 'Google stopped letting this server read your YouTube history; connect again.';
+const PULL_ONE_TIME = 'Google gave access for one pull only. To keep pulling, connect again and choose to allow access for 30 or 180 days.';
+
+/** When each person's last export was started or abandoned, so a failing one is retried at most hourly. */
+const pullTried = new Map<number, number>();
+/** Each person's accessType from Google when their current export started. A restart forgets it, so a one-time grant then keeps its token until Google refuses the next export. */
+const pullAccess = new Map<number, string>();
+
+/** Trades the code from the YouTube consent redirect for a refresh token and saves it. Throws a plain message when it can't. */
+export async function connectYouTubePull(userId: number, code: string, redirect_uri: string) {
+	let t;
+	try {
+		t = await googleToken({ grant_type: 'authorization_code', code, redirect_uri });
+	} catch {
+		throw new Error("Google didn't accept the request. Try again.");
+	}
+	if (!t.scope?.split(' ').includes(YOUTUBE_SCOPE)) throw new Error("Allow this server to read your YouTube history on Google's screen, then try again.");
+	if (!t.refresh_token) throw new Error("Google didn't let this server keep access. Try again.");
+	run('UPDATE users SET youtube_refresh = ?, youtube_job = NULL, youtube_error = NULL WHERE id = ?', seal(t.refresh_token), userId);
+	pullTried.delete(userId);
+}
+
+/** Calls the Data Portability API; Google's own error message when it refuses. */
+async function portability(token: string, path: string, body?: object) {
+	const res = await fetch(PORTABILITY + path, {
+		method: body ? 'POST' : 'GET',
+		headers: { Authorization: `Bearer ${token}`, ...(body && { 'Content-Type': 'application/json' }) },
+		body: body && JSON.stringify(body),
+		signal: AbortSignal.timeout(30_000)
+	});
+	const json = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error(json.error?.message ?? `Google returned ${res.status}.`);
+	return json;
+}
+
+/** An access token from the person's saved refresh token, or null after clearing a token Google won't take any more. */
+async function youtubeAccess(u: Row) {
+	const refresh = unseal(u.youtube_refresh);
+	try {
+		if (refresh) return (await googleToken({ grant_type: 'refresh_token', refresh_token: refresh })).access_token;
+	} catch (e) {
+		if (!(e instanceof GoogleTokenError && e.code === 'invalid_grant')) throw e;
+	}
+	run('UPDATE users SET youtube_refresh = NULL, youtube_job = NULL, youtube_error = ? WHERE id = ? AND youtube_refresh = ?', PULL_REVOKED, u.id, u.youtube_refresh);
+	return null;
+}
+
+/**
+ * One step of a person's pull: start an export once a day, or check on the one Google is preparing and save it when ready.
+ * Every write after an await is guarded by the state it started from, so stopping or reconnecting meanwhile wins.
+ * A failure leaves pulled_at alone, so the next export covers the same days and the plays already saved drop out as duplicates.
+ * A finished export is read at most once: if reading it fails, a new one starts within the hour.
+ */
+async function pullYouTube(u: Row) {
+	const due = !u.youtube_job && now() - (u.youtube_pulled_at ?? 0) >= PULL_EVERY && Date.now() - (pullTried.get(u.id) ?? 0) >= 3600_000;
+	if (!u.youtube_job && !due) return;
+	if (due) pullTried.set(u.id, Date.now());
+	const token = await youtubeAccess(u);
+	if (!token) return;
+
+	if (due) {
+		// A day of overlap catches activity Google records late.
+		const since = u.youtube_pulled_at ? { startTime: new Date((u.youtube_pulled_at - 86400) * 1000).toISOString() } : {};
+		const job = await portability(token, 'portabilityArchive:initiate', { resources: ['myactivity.youtube'], ...since });
+		pullAccess.set(u.id, job.accessType);
+		run('UPDATE users SET youtube_job = ?, youtube_error = NULL WHERE id = ? AND youtube_refresh = ?', job.archiveJobId, u.id, u.youtube_refresh);
+		return;
+	}
+
+	const state = await portability(token, `archiveJobs/${encodeURIComponent(u.youtube_job)}/portabilityArchiveState`);
+	if (state.state === 'IN_PROGRESS') return;
+	pullTried.set(u.id, Date.now());
+	if (!run('UPDATE users SET youtube_job = NULL WHERE id = ? AND youtube_job = ?', u.id, u.youtube_job).changes) return;
+	if (state.state !== 'COMPLETE') throw new Error(`Google couldn't prepare your YouTube history (${state.state}). It'll try again.`);
+	let entries: HistoryEntry[] = [];
+	for (const url of state.urls ?? []) {
+		const res = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+		if (!res.ok) throw new Error(`Google returned ${res.status} for your exported history.`);
+		entries = entries.concat(readActivityArchive(new Uint8Array(await res.arrayBuffer())));
+	}
+	const { added } = importEntries(u.id, [{ name: 'YouTube Music pull', entries }]);
+	if (added) console.log(`youtube pull: user ${u.id} +${added}`);
+	const exportedAt = Math.floor(Date.parse(state.exportTime) / 1000) || now();
+	run('UPDATE users SET youtube_pulled_at = ?, youtube_error = NULL WHERE id = ? AND youtube_refresh = ?', exportedAt, u.id, u.youtube_refresh);
+	if (pullAccess.get(u.id) === 'ACCESS_TYPE_ONE_TIME') {
+		await portability(token, 'authorization:reset', {}).catch(() => {});
+		run('UPDATE users SET youtube_refresh = NULL, youtube_error = ? WHERE id = ? AND youtube_refresh = ?', PULL_ONE_TIME, u.id, u.youtube_refresh);
+	}
+}
+
+/** Runs a step of every person's YouTube Music pull. One person's failure is saved for them to see and never stops the rest. */
+export async function youtubePullsDue() {
+	for (const u of all('SELECT id, youtube_refresh, youtube_job, youtube_pulled_at FROM users WHERE youtube_refresh IS NOT NULL')) {
+		try {
+			await pullYouTube(u);
+		} catch (e) {
+			const error = String((e as Error)?.message ?? e);
+			console.warn(`youtube pull: user ${u.id}: ${error}`);
+			run('UPDATE users SET youtube_error = ? WHERE id = ? AND youtube_refresh = ?', error, u.id, u.youtube_refresh);
+		}
+	}
+}
+
+/** Stops the person's pull: tells Google to drop this server's access (best effort), then forgets it here. */
+export async function stopYouTubePull(userId: number) {
+	const u = get('SELECT id, youtube_refresh FROM users WHERE id = ?', userId);
+	if (u?.youtube_refresh)
+		try {
+			const token = await youtubeAccess(u);
+			if (token) await portability(token, 'authorization:reset', {});
+		} catch {
+			// Google may already have dropped it; the token is forgotten here either way.
+		}
+	run('UPDATE users SET youtube_refresh = NULL, youtube_job = NULL, youtube_pulled_at = NULL, youtube_error = NULL WHERE id = ?', userId);
+	pullTried.delete(userId);
+	pullAccess.delete(userId);
 }
 
 // ---- Last.fm ----

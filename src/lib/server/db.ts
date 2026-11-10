@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS users (
 	scrobble_source TEXT CHECK (scrobble_source IN ('lastfm', 'listenbrainz')),
 	scrobble_cursor INTEGER NOT NULL DEFAULT 0,
 	scrobble_error TEXT,
+	youtube_refresh TEXT,
+	youtube_job TEXT,
+	youtube_pulled_at INTEGER,
+	youtube_error TEXT,
 	home_location TEXT,
 	show_miles INTEGER NOT NULL DEFAULT 100,
 	created_at INTEGER NOT NULL
@@ -234,6 +238,12 @@ if (!userColumns.includes('scrobble_error')) db.exec('ALTER TABLE users ADD COLU
 if (!userColumns.includes('google_id')) db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
 if (!userColumns.includes('google_email')) db.exec('ALTER TABLE users ADD COLUMN google_email TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users (google_id)');
+// YouTube Music pull: the sealed Data Portability refresh token, the export Google is preparing, when the last one
+// was taken, and why the last try failed. See connections.ts.
+if (!userColumns.includes('youtube_refresh')) db.exec('ALTER TABLE users ADD COLUMN youtube_refresh TEXT');
+if (!userColumns.includes('youtube_job')) db.exec('ALTER TABLE users ADD COLUMN youtube_job TEXT');
+if (!userColumns.includes('youtube_pulled_at')) db.exec('ALTER TABLE users ADD COLUMN youtube_pulled_at INTEGER');
+if (!userColumns.includes('youtube_error')) db.exec('ALTER TABLE users ADD COLUMN youtube_error TEXT');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');
