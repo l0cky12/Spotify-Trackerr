@@ -1,5 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { db, get, run, tx, now } from './db.js';
+import { db, get, run, tx, now, PLAY_SOURCES } from './db.js';
+
+export type PlaySource = (typeof PLAY_SOURCES)[number];
 
 /** Matching key: case/accents/whitespace-insensitive, ignores "Remastered" suffixes. */
 export function key(s: string) {
@@ -77,7 +79,7 @@ export function insertPlay(p: {
 	artistId: number;
 	playedAt: number;
 	msPlayed: number;
-	source: 'import' | 'sync';
+	source: PlaySource;
 	durationMs: number | null;
 }) {
 	const win = Math.max(180, Math.round((p.durationMs ?? 0) / 1000) + 30);

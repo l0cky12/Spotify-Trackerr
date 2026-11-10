@@ -8,6 +8,25 @@ mkdirSync(join(DATA_DIR, 'uploads'), { recursive: true });
 
 export const db = new DatabaseSync(join(DATA_DIR, 'trackerr.db'));
 
+/** Where a play came from: a Spotify history import, Spotify sync, a YouTube Takeout import, or a Last.fm/ListenBrainz scrobble. */
+export const PLAY_SOURCES = ['import', 'sync', 'takeout', 'scrobble'] as const;
+
+const playsTable = (name: string) => `CREATE TABLE IF NOT EXISTS ${name} (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	track_id INTEGER NOT NULL REFERENCES tracks,
+	album_id INTEGER REFERENCES albums,
+	artist_id INTEGER NOT NULL REFERENCES artists,
+	played_at INTEGER NOT NULL, -- unix seconds, UTC, end of playback
+	ms_played INTEGER NOT NULL,
+	source TEXT NOT NULL CHECK (source IN (${PLAY_SOURCES.map((s) => `'${s}'`).join(', ')}))
+);`;
+const PLAYS_INDEXES = `CREATE INDEX IF NOT EXISTS plays_user_time ON plays (user_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_user_track ON plays (user_id, track_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_user_artist ON plays (user_id, artist_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_user_album ON plays (user_id, album_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_track ON plays (track_id);`;
+
 db.exec(`
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -102,21 +121,8 @@ CREATE TABLE IF NOT EXISTS track_features (
 	PRIMARY KEY (track_id, name)
 );
 
-CREATE TABLE IF NOT EXISTS plays (
-	id INTEGER PRIMARY KEY,
-	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
-	track_id INTEGER NOT NULL REFERENCES tracks,
-	album_id INTEGER REFERENCES albums,
-	artist_id INTEGER NOT NULL REFERENCES artists,
-	played_at INTEGER NOT NULL, -- unix seconds, UTC, end of playback
-	ms_played INTEGER NOT NULL,
-	source TEXT NOT NULL CHECK (source IN ('import', 'sync'))
-);
-CREATE INDEX IF NOT EXISTS plays_user_time ON plays (user_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_user_track ON plays (user_id, track_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_user_artist ON plays (user_id, artist_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_user_album ON plays (user_id, album_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_track ON plays (track_id);
+${playsTable('plays')}
+${PLAYS_INDEXES}
 
 CREATE TABLE IF NOT EXISTS imports (
 	id INTEGER PRIMARY KEY,
@@ -219,6 +225,28 @@ if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listen
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE INDEX IF NOT EXISTS tracks_credits ON tracks (credits_done)');
+
+// SQLite can't change a CHECK in place, so a plays table from before the newest source is rebuilt
+// (https://www.sqlite.org/lang_altertable.html#otheralter). Foreign keys can only be switched off outside a transaction.
+const playsSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'plays'").get() as { sql: string }).sql;
+if (!PLAY_SOURCES.every((s) => playsSql.includes(`'${s}'`))) {
+	db.exec('PRAGMA foreign_keys = OFF');
+	try {
+		db.exec(`BEGIN;
+			${playsTable('plays_new')}
+			INSERT INTO plays_new (id, user_id, track_id, album_id, artist_id, played_at, ms_played, source)
+				SELECT id, user_id, track_id, album_id, artist_id, played_at, ms_played, source FROM plays;
+			DROP TABLE plays;
+			ALTER TABLE plays_new RENAME TO plays;
+			${PLAYS_INDEXES}
+			COMMIT;`);
+	} catch (e) {
+		if (db.isTransaction) db.exec('ROLLBACK');
+		throw e;
+	} finally {
+		db.exec('PRAGMA foreign_keys = ON');
+	}
+}
 
 export const now = () => Math.floor(Date.now() / 1000);
 
