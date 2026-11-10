@@ -64,7 +64,7 @@ test('an admin turns on Google sign-in in Settings; everyone else then signs in 
 	// Google says the pair is wrong: nothing is saved.
 	fakeGoogle({ status: 401, error: 'invalid_client' });
 	expect(await saveClient(1, ID, 'GOCSPX-wrong')).toMatchObject({ status: 400, data: { error: expect.stringMatching(/didn't accept/) } });
-	expect(await saveClient(1, 'not-a-client-id', 'x')).toMatchObject({ status: 400, data: { error: expect.stringMatching(/apps\.googleusercontent\.com/) } });
+	expect(await saveClient(1, 'not-a-client-id', 'x')).toMatchObject({ status: 400, data: { error: expect.stringContaining('ends in .apps.googleusercontent.com') } });
 	expect(googleLoginShown()).toBe(false);
 
 	const checked = fakeGoogle({ status: 400, error: 'invalid_grant' });
