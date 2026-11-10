@@ -15,7 +15,7 @@ A Spotify developer app a person registers themselves and links through, instead
 _Avoid_: custom app, personal client
 
 **Server app**:
-The Spotify or Last.fm developer app the server admin configures for everyone.
+The Spotify, Last.fm or Google developer app the server admin configures for everyone.
 _Avoid_: default app, shared client
 
 **Google login**:

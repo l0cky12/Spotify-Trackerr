@@ -259,20 +259,54 @@ export function connectionStatus(u: Row) {
 
 // ---- Google ----
 
-/** Google sign-in only says who someone is; it reads none of their music. */
-export const googleLoginEnabled = () => !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+/** The server's Google OAuth client: from .env if set there, otherwise the one an admin saved in Settings. Google sign-in only says who someone is; it reads none of their music. */
+export function googleApp() {
+	if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) return { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET, fromEnv: true };
+	const id = setting('google_client_id');
+	const secret = id ? unseal(setting('google_secret')) : null;
+	return id && secret ? { id, secret, fromEnv: false } : null;
+}
+export const googleLoginEnabled = () => !!googleApp();
+/** The Google client ID an admin saved in Settings (never the secret), for showing in the form. */
+export const savedGoogleClientId = () => setting('google_client_id') ?? '';
+
+export function setGoogleServerApp(id: string, secret: string) {
+	tx(() => {
+		setSetting('google_client_id', id);
+		setSetting('google_secret', seal(secret));
+	});
+}
+
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+/** Asks Google whether a client ID and secret belong together: trading a made-up code fails with invalid_client unless both are right. */
+export async function checkGoogleApp(id: string, secret: string, redirect_uri: string): Promise<'ok' | 'rejected' | 'unreachable'> {
+	try {
+		const res = await fetch(GOOGLE_TOKEN_URL, {
+			method: 'POST',
+			body: new URLSearchParams({ grant_type: 'authorization_code', code: 'trackerr-check', redirect_uri, client_id: id, client_secret: secret }),
+			signal: AbortSignal.timeout(10_000)
+		});
+		const { error } = await res.json().catch(() => ({}));
+		if (error === 'invalid_client') return 'rejected';
+		return res.status === 400 ? 'ok' : 'unreachable';
+	} catch {
+		return 'unreachable';
+	}
+}
 
 export const googleAuthUrl = (redirect_uri: string, state: string) =>
 	'https://accounts.google.com/o/oauth2/v2/auth?' +
-	new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID!, redirect_uri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
+	new URLSearchParams({ client_id: googleApp()!.id, redirect_uri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
 
 export type GoogleAccount = { googleId: string; email: string | null; name: string | null };
 
 /** Trades the code from Google's sign-in redirect for the account it belongs to. */
 export async function exchangeGoogleCode(code: string, redirect_uri: string): Promise<GoogleAccount> {
-	const res = await fetch('https://oauth2.googleapis.com/token', {
+	const app = googleApp()!;
+	const res = await fetch(GOOGLE_TOKEN_URL, {
 		method: 'POST',
-		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET! }),
+		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: app.id, client_secret: app.secret }),
 		signal: AbortSignal.timeout(10_000)
 	});
 	if (!res.ok) throw new Error(`Google returned ${res.status}`);

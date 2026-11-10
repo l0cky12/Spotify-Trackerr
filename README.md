@@ -210,9 +210,11 @@ https name.
    check for shows near you, or run that request on a schedule to get alerts.
 6. **Google sign-in (optional).** In the Google Cloud console
    (https://console.cloud.google.com/apis/credentials), create an OAuth client ID of type *Web
-   application* with redirect URI `https://<your address>/auth/google/callback`, and put its ID and
-   secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. The login page then shows *Sign in with
-   Google*, and each person can link Google in *Settings > Google*. Google sign-in reads no
+   application* with redirect URI `https://<your address>/auth/google/callback`. Paste its client ID
+   and secret into *Settings > Google* as an admin (the secret is stored encrypted, and Google checks
+   the pair before it's saved), or put them in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, which
+   win over Settings. The login page then shows *Sign in with Google* for everyone, and each person
+   can link Google in *Settings > Google* without entering any ID or secret of their own. Google sign-in reads no
    listening. A Google account that isn't linked yet creates an account only while sign-up is open.
 7. **Import history.** Request *Extended streaming history* at https://www.spotify.com/account/privacy/
    and upload the zip in Settings when it arrives (up to 30 days). For YouTube Music, see below.

@@ -4,14 +4,18 @@ import { all, get, run, setting, setSetting } from '#lib/server/db.js';
 import { apiTokensOf, checkPassword, createApiToken, createUser, endSession, hashPassword, revokeApiToken, validUsername } from '#lib/server/auth.js';
 import {
 	activeSpotifyLink,
+	checkGoogleApp,
 	checkLastfmApp,
 	connectionStatus,
+	googleApp,
 	googleLoginEnabled,
 	LINKED_SQL,
 	lastfmApp,
 	lastfmLoginEnabled,
 	listenbrainzLoginEnabled,
+	savedGoogleClientId,
 	savedLastfmKey,
+	setGoogleServerApp,
 	setLastfmServerApp,
 	setLastfmUser,
 	setListenbrainzUser,
@@ -72,6 +76,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 					allowSignup: setting('allow_signup') === '1',
 					lastfmFromEnv: !!lastfmApp()?.fromEnv,
 					lastfmKey: savedLastfmKey(),
+					googleFromEnv: !!googleApp()?.fromEnv,
+					googleClientId: savedGoogleClientId(),
 					users: all(`SELECT id, username, display_name, is_admin, ${LINKED_SQL} linked, (SELECT COUNT(*) FROM plays WHERE user_id = users.id) plays FROM users ORDER BY id`)
 				}
 			: null
@@ -208,6 +214,20 @@ export const actions = {
 		setLastfmServerApp(key, secret);
 		retryGenresWithLastfm();
 		return { section: 'lastfm', saved: true };
+	},
+	googleApp: async ({ request, locals, url }) => {
+		requireAdmin(locals);
+		if (googleApp()?.fromEnv) return fail(400, { section: 'google', error: "This server's Google client is set in its .env file; change it there." });
+		const f = await request.formData();
+		const id = String(f.get('client_id') ?? '').trim();
+		const secret = String(f.get('client_secret') ?? '').trim();
+		if (!/^[\w-]+\.apps\.googleusercontent\.com$/.test(id) || !secret)
+			return fail(400, { section: 'google', error: 'Paste the client ID (it ends in .apps.googleusercontent.com) and the client secret from your OAuth client in the Google Cloud console.' });
+		const check = await checkGoogleApp(id, secret, `${url.origin}/auth/google/callback`);
+		if (check === 'rejected') return fail(400, { section: 'google', error: "Google didn't accept that client ID and secret. Copy both again from the same OAuth client." });
+		if (check === 'unreachable') return fail(502, { section: 'google', error: "Couldn't reach Google to check the client. Try again in a minute." });
+		setGoogleServerApp(id, secret);
+		return { section: 'google', saved: true };
 	},
 	import: async ({ request, locals }) => {
 		const files = (await request.formData()).getAll('files').filter((f): f is File => f instanceof File && f.size > 0);

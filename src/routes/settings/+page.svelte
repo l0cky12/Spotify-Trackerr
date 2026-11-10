@@ -351,15 +351,33 @@
 {:else if data.googleLogin}
 	<p>Link your Google account to log in with Google. It's only used to log you in, not to read your listening.</p>
 	<a class="button" href="/auth/google?mode=link">Link Google</a>
-{:else if data.admin}
-	<p class="muted">
-		Google sign-in isn't set up on this server. Create an OAuth client (type: web application) in the
-		<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud console</a> with this redirect URI, then add its
-		<code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the server's <code>.env</code>.
-	</p>
-	<p><code>{data.googleCallback}</code></p>
+{/if}
+{#if data.admin && !data.admin.googleFromEnv}
+	{#if data.googleLogin}
+		<details>
+			<summary class="muted small">Change this server's Google client</summary>
+			{@render googleAppForm()}
+		</details>
+	{:else}
+		<p>
+			Turn on Google sign-in for everyone on this server. Create an OAuth client (type: web application) in the
+			<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud console</a> with this redirect URI, then paste its
+			client ID and client secret here. Everyone else just clicks <strong>Sign in with Google</strong>.
+		</p>
+		<p><code>{data.googleCallback}</code></p>
+		{@render googleAppForm()}
+	{/if}
 {/if}
 {#if msg('google')?.error}<p class="error">{msg('google')?.error}</p>{/if}
+{/snippet}
+
+{#snippet googleAppForm()}
+<form method="POST" action="?section=google&/googleApp" use:enhance class="stack">
+	<label>Client ID <input name="client_id" value={data.admin?.googleClientId} autocomplete="off" required /></label>
+	<label>Client secret <input name="client_secret" type="password" placeholder={data.admin?.googleClientId ? 'Saved' : ''} autocomplete="off" required /></label>
+	<button>Save and turn on</button>
+	<p class="muted small">The secret is stored encrypted.</p>
+</form>
 {/snippet}
 
 {#snippet youtubeSection()}
