@@ -1,6 +1,6 @@
 # Spotify Trackerr
 
-Self-hosted listening stats: each person's Spotify plays, synced and imported, shown as dashboards, history, and recommendations.
+Self-hosted listening stats: each person's Spotify and YouTube Music plays, synced and imported, shown as dashboards, history, and recommendations.
 
 ## Language
 
@@ -18,6 +18,10 @@ _Avoid_: custom app, personal client
 The Spotify or Last.fm developer app the server admin configures for everyone.
 _Avoid_: default app, shared client
 
+**Google login**:
+Logging in with a Google account linked to a person's account here. It only says who they are; it reads no listening. An unknown Google account gets a new account only while sign-up is open.
+_Avoid_: Google sync, YouTube login
+
 **Needs reconnect**:
 The state of a Spotify Connection whose saved credentials can no longer be used (Spotify revoked them, the own app was removed, or the server's key changed); the person must link again.
 _Avoid_: reauth, expired, broken
@@ -25,8 +29,16 @@ _Avoid_: reauth, expired, broken
 ### Plays and reports
 
 **Play**:
-One listen of a song by one person: which song, when it ended, how long it ran, and whether it came from an import or a sync. Every stat is counted from plays, so fixing a play (its song or its time) fixes every page.
-_Avoid_: scrobble, listen (as a noun), stream
+One listen of a song by one person: which song, when it ended, how long it ran, and where it came from (a Spotify import, a sync, a Takeout import or a scrobble sync). Every stat is counted from plays, so fixing a play (its song or its time) fixes every page.
+_Avoid_: scrobble (that's the Last.fm or ListenBrainz record a play can come from), listen (as a noun), stream
+
+**Takeout import**:
+Uploading the YouTube watch history from Google Takeout (watch-history.json, or the Takeout .zip) to add a person's past YouTube Music plays. Other YouTube videos are skipped. Takeout gives no length, so these plays count as the whole song once its length is known.
+_Avoid_: YouTube sync, Google import
+
+**Scrobble sync**:
+Saving a person's Last.fm or ListenBrainz scrobbles as plays, from the one account they picked. It's off until they pick one, and its first run brings in their whole scrobble history. It is how new YouTube Music listening arrives, through a scrobbler app.
+_Avoid_: Last.fm import, scrobble import, YouTube sync
 
 **Ban**:
 A song, album or artist a person chose to hide. Their plays of it stay saved but are left out of every stat, list, chart, history page, search and recommendation until they unban it. A ban is the owner's: it hides their own plays from anyone looking, and someone else's plays of the same artist still count for that person.
