@@ -6,6 +6,7 @@ import {
 	activeSpotifyLink,
 	checkLastfmApp,
 	connectionStatus,
+	googleLoginEnabled,
 	LINKED_SQL,
 	lastfmApp,
 	lastfmLoginEnabled,
@@ -17,6 +18,7 @@ import {
 	setOwnApp,
 	setScrobbleSource,
 	spotifyServerAppConfigured,
+	unlinkGoogle,
 	unlinkSpotify
 } from '#lib/server/connections.js';
 import type { ScrobbleSource } from '#lib/server/connections.js';
@@ -52,6 +54,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		lastfmLogin: lastfmLoginEnabled(),
 		listenbrainzLogin: listenbrainzLoginEnabled(),
 		listenbrainzCallback: `${url.origin}/auth/listenbrainz/callback`,
+		googleLogin: googleLoginEnabled(),
+		googleCallback: `${url.origin}/auth/google/callback`,
 		callback: `${url.origin}/auth/spotify/callback`,
 		mcpUrl: `${url.origin}/mcp`,
 		apiTokens: apiTokensOf(u.id),
@@ -152,7 +156,8 @@ export const actions = {
 		return { section: 'spotify', synced: r.added };
 	},
 	unlink: async ({ locals }) => {
-		if (!locals.user!.password_hash) return fail(400, { section: 'spotify', error: 'Set a username and password first; otherwise you could no longer log in.' });
+		if (!locals.user!.password_hash && !locals.user!.google_id)
+			return fail(400, { section: 'spotify', error: 'Set a username and password or link Google first; otherwise you could no longer log in.' });
 		unlinkSpotify(locals.user!.id);
 		return { section: 'spotify', saved: true };
 	},
@@ -167,6 +172,12 @@ export const actions = {
 		if (!/^[a-f0-9]{32}$/i.test(id) || !/^[a-f0-9]{32}$/i.test(secret)) return fail(400, { section: 'ownApp', error: 'Client ID and secret are both 32-character codes from the Spotify dashboard.' });
 		setOwnApp(locals.user!.id, { id, secret });
 		return { section: 'ownApp', saved: true };
+	},
+	googleUnlink: async ({ locals }) => {
+		if (!locals.user!.password_hash && !locals.user!.spotify_id)
+			return fail(400, { section: 'google', error: 'Set a username and password or link Spotify first; otherwise you could no longer log in.' });
+		unlinkGoogle(locals.user!.id);
+		return { section: 'google', saved: true };
 	},
 	lastfmUnlink: async ({ locals }) => {
 		setLastfmUser(locals.user!.id, null);

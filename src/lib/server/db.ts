@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS users (
 	time_unit TEXT NOT NULL DEFAULT 'auto',
 	public INTEGER NOT NULL DEFAULT 0,
 	spotify_id TEXT UNIQUE,
+	google_id TEXT,
+	google_email TEXT,
 	spotify_access TEXT,
 	spotify_refresh TEXT,
 	spotify_expires INTEGER,
@@ -228,6 +230,10 @@ if (!userColumns.includes('sync_minutes')) db.exec('ALTER TABLE users ADD COLUMN
 if (!userColumns.includes('scrobble_source')) db.exec("ALTER TABLE users ADD COLUMN scrobble_source TEXT CHECK (scrobble_source IN ('lastfm', 'listenbrainz'))");
 if (!userColumns.includes('scrobble_cursor')) db.exec('ALTER TABLE users ADD COLUMN scrobble_cursor INTEGER NOT NULL DEFAULT 0');
 if (!userColumns.includes('scrobble_error')) db.exec('ALTER TABLE users ADD COLUMN scrobble_error TEXT');
+// Google sign-in (identity only). SQLite can't add a UNIQUE column, so the uniqueness is an index.
+if (!userColumns.includes('google_id')) db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
+if (!userColumns.includes('google_email')) db.exec('ALTER TABLE users ADD COLUMN google_email TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users (google_id)');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');

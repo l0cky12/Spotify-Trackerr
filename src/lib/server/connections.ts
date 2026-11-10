@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { db, DATA_DIR, userColumns, all, get, run, now, tx, setting, setSetting, type Row } from './db.js';
 import { lastfm, getJson, UA } from './enrich.js';
 
-// A person's Connections: their Spotify link (tokens, which app it went through, sync state) and their Last.fm and ListenBrainz usernames,
+// A person's Connections: their Spotify link (tokens, which app it went through, sync state), their Last.fm and ListenBrainz usernames
+// and which one's scrobbles count as plays, and the Google account they log in with,
 // plus the server's own Spotify and Last.fm apps. Nothing outside this file reads those columns or knows they're encrypted.
 
 // playlist-modify-private is for Playlists; links made before it was added get a 403 there until the person reconnects.
@@ -250,8 +251,47 @@ export function connectionStatus(u: Row) {
 		listenbrainzUser: (u.listenbrainz_user as string | null) ?? null,
 		scrobbleSource: (u.scrobble_source as ScrobbleSource | null) ?? null,
 		scrobbleError: (u.scrobble_error as string | null) ?? null,
-		scrobblesThrough: (u.scrobble_cursor as number | undefined) || null
+		scrobblesThrough: (u.scrobble_cursor as number | undefined) || null,
+		googleLinked: !!u.google_id,
+		googleEmail: (u.google_email as string | null) ?? null
 	};
+}
+
+// ---- Google ----
+
+/** Google sign-in only says who someone is; it reads none of their music. */
+export const googleLoginEnabled = () => !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+
+export const googleAuthUrl = (redirect_uri: string, state: string) =>
+	'https://accounts.google.com/o/oauth2/v2/auth?' +
+	new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID!, redirect_uri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
+
+export type GoogleAccount = { googleId: string; email: string | null; name: string | null };
+
+/** Trades the code from Google's sign-in redirect for the account it belongs to. */
+export async function exchangeGoogleCode(code: string, redirect_uri: string): Promise<GoogleAccount> {
+	const res = await fetch('https://oauth2.googleapis.com/token', {
+		method: 'POST',
+		body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET! }),
+		signal: AbortSignal.timeout(10_000)
+	});
+	if (!res.ok) throw new Error(`Google returned ${res.status}`);
+	const { access_token } = await res.json();
+	const me = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(10_000) });
+	if (!me.ok) throw new Error(`Google returned ${me.status}`);
+	const p = await me.json();
+	if (typeof p.sub !== 'string' || !p.sub) throw new Error('Google returned an invalid account.');
+	return { googleId: p.sub, email: typeof p.email === 'string' ? p.email : null, name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : null };
+}
+
+export const googleOwner = (googleId: string) => get('SELECT id FROM users WHERE google_id = ?', googleId)?.id as number | undefined;
+
+export function saveGoogleLink(userId: number, account: GoogleAccount) {
+	run('UPDATE users SET google_id = ?, google_email = ? WHERE id = ?', account.googleId, account.email, userId);
+}
+
+export function unlinkGoogle(userId: number) {
+	run('UPDATE users SET google_id = NULL, google_email = NULL WHERE id = ?', userId);
 }
 
 // ---- Last.fm ----

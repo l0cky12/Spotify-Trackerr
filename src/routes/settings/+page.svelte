@@ -14,7 +14,8 @@
 	// One section shows at a time, picked by ?section= so it renders on the server and works without JavaScript.
 	// Each form posts to ?section=<id>&/<action> so the same section reopens with its result.
 	const sections = $derived([
-		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
+		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: (!data.u.linked && !data.u.scrobbleSource) || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
+		...(data.googleLogin || data.u.googleLinked || data.admin ? [{ id: 'google', group: 'Connections', title: 'Google', alert: false, body: googleSection }] : []),
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
 		{ id: 'youtube', group: 'Connections', title: 'YouTube Music', alert: !!data.u.scrobbleError, body: youtubeSection },
@@ -240,7 +241,7 @@
 {/snippet}
 
 {#snippet passwordSection()}
-{#if !data.u.hasPassword}<p class="muted">Lets you log in without Spotify.</p>{/if}
+{#if !data.u.hasPassword}<p class="muted">Lets you log in without Spotify or Google.</p>{/if}
 <form method="POST" action="?section=password&/password" use:enhance class="stack">
 	<label>Username <input name="username" value={data.u.username ?? ''} autocomplete="username" required /></label>
 	{#if data.u.hasPassword}<label>Current password <input name="current" type="password" autocomplete="current-password" required /></label>{/if}
@@ -340,6 +341,25 @@
 	</p>
 	{#if data.admin}<p><code>{data.listenbrainzCallback}</code></p>{/if}
 {/if}
+{/snippet}
+
+{#snippet googleSection()}
+{#if data.u.googleLinked}
+	<p><span class="ok">Linked</span>{#if data.u.googleEmail} as {data.u.googleEmail}{/if}. You can log in with Google.</p>
+	<form method="POST" action="?section=google&/googleUnlink" use:enhance><button class="secondary">Unlink Google</button></form>
+	<p class="muted small">Google is only used to log you in. It doesn't bring in any listening; for YouTube Music, see <a href="?section=youtube">YouTube Music</a>.</p>
+{:else if data.googleLogin}
+	<p>Link your Google account to log in with Google. It's only used to log you in, not to read your listening.</p>
+	<a class="button" href="/auth/google?mode=link">Link Google</a>
+{:else if data.admin}
+	<p class="muted">
+		Google sign-in isn't set up on this server. Create an OAuth client (type: web application) in the
+		<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud console</a> with this redirect URI, then add its
+		<code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the server's <code>.env</code>.
+	</p>
+	<p><code>{data.googleCallback}</code></p>
+{/if}
+{#if msg('google')?.error}<p class="error">{msg('google')?.error}</p>{/if}
 {/snippet}
 
 {#snippet youtubeSection()}
@@ -457,6 +477,7 @@
 		</label>
 	</form>
 	<p class="muted small">Spotify sign-in always creates an account, but only for Spotify accounts you've added to the app's user list in the Spotify dashboard (up to 5).</p>
+	{#if data.googleLogin}<p class="muted small">Google sign-in creates an account only while the box above is ticked. Otherwise people link Google in Settings after logging in another way.</p>{/if}
 	{#if data.serverApp}<p class="muted small">Register <code>{data.callback}</code> (and the same path on your other address) as a redirect URI in the server's Spotify app.</p>{/if}
 	<table>
 		<thead><tr><th>Name</th><th>Username</th><th>Spotify</th><th>Plays</th><th>Admin</th><th></th></tr></thead>
