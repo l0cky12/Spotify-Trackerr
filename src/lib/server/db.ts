@@ -8,6 +8,25 @@ mkdirSync(join(DATA_DIR, 'uploads'), { recursive: true });
 
 export const db = new DatabaseSync(join(DATA_DIR, 'trackerr.db'));
 
+/** Where a play came from: a Spotify history import, Spotify sync, a YouTube Takeout import, or a Last.fm/ListenBrainz scrobble. */
+export const PLAY_SOURCES = ['import', 'sync', 'takeout', 'scrobble'] as const;
+
+const playsTable = (name: string) => `CREATE TABLE IF NOT EXISTS ${name} (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
+	track_id INTEGER NOT NULL REFERENCES tracks,
+	album_id INTEGER REFERENCES albums,
+	artist_id INTEGER NOT NULL REFERENCES artists,
+	played_at INTEGER NOT NULL, -- unix seconds, UTC, end of playback
+	ms_played INTEGER NOT NULL,
+	source TEXT NOT NULL CHECK (source IN (${PLAY_SOURCES.map((s) => `'${s}'`).join(', ')}))
+);`;
+const PLAYS_INDEXES = `CREATE INDEX IF NOT EXISTS plays_user_time ON plays (user_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_user_track ON plays (user_id, track_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_user_artist ON plays (user_id, artist_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_user_album ON plays (user_id, album_id, played_at);
+CREATE INDEX IF NOT EXISTS plays_track ON plays (track_id);`;
+
 db.exec(`
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -24,6 +43,8 @@ CREATE TABLE IF NOT EXISTS users (
 	time_unit TEXT NOT NULL DEFAULT 'auto',
 	public INTEGER NOT NULL DEFAULT 0,
 	spotify_id TEXT UNIQUE,
+	google_id TEXT,
+	google_email TEXT,
 	spotify_access TEXT,
 	spotify_refresh TEXT,
 	spotify_expires INTEGER,
@@ -36,6 +57,9 @@ CREATE TABLE IF NOT EXISTS users (
 	own_client_secret TEXT,
 	lastfm_user TEXT,
 	listenbrainz_user TEXT,
+	scrobble_source TEXT CHECK (scrobble_source IN ('lastfm', 'listenbrainz')),
+	scrobble_cursor INTEGER NOT NULL DEFAULT 0,
+	scrobble_error TEXT,
 	home_location TEXT,
 	show_miles INTEGER NOT NULL DEFAULT 100,
 	created_at INTEGER NOT NULL
@@ -102,21 +126,8 @@ CREATE TABLE IF NOT EXISTS track_features (
 	PRIMARY KEY (track_id, name)
 );
 
-CREATE TABLE IF NOT EXISTS plays (
-	id INTEGER PRIMARY KEY,
-	user_id INTEGER NOT NULL REFERENCES users ON DELETE CASCADE,
-	track_id INTEGER NOT NULL REFERENCES tracks,
-	album_id INTEGER REFERENCES albums,
-	artist_id INTEGER NOT NULL REFERENCES artists,
-	played_at INTEGER NOT NULL, -- unix seconds, UTC, end of playback
-	ms_played INTEGER NOT NULL,
-	source TEXT NOT NULL CHECK (source IN ('import', 'sync'))
-);
-CREATE INDEX IF NOT EXISTS plays_user_time ON plays (user_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_user_track ON plays (user_id, track_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_user_artist ON plays (user_id, artist_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_user_album ON plays (user_id, album_id, played_at);
-CREATE INDEX IF NOT EXISTS plays_track ON plays (track_id);
+${playsTable('plays')}
+${PLAYS_INDEXES}
 
 CREATE TABLE IF NOT EXISTS imports (
 	id INTEGER PRIMARY KEY,
@@ -215,10 +226,48 @@ if (!userColumns.includes('home_location')) db.exec('ALTER TABLE users ADD COLUM
 if (!userColumns.includes('show_miles')) db.exec('ALTER TABLE users ADD COLUMN show_miles INTEGER NOT NULL DEFAULT 100');
 // How often new plays sync, picked in Settings (5–30 minutes).
 if (!userColumns.includes('sync_minutes')) db.exec('ALTER TABLE users ADD COLUMN sync_minutes INTEGER NOT NULL DEFAULT 5');
+// Which scrobbles count as plays (null = none), and the time of the newest one counted so far. See scrobbles.ts.
+if (!userColumns.includes('scrobble_source')) db.exec("ALTER TABLE users ADD COLUMN scrobble_source TEXT CHECK (scrobble_source IN ('lastfm', 'listenbrainz'))");
+if (!userColumns.includes('scrobble_cursor')) db.exec('ALTER TABLE users ADD COLUMN scrobble_cursor INTEGER NOT NULL DEFAULT 0');
+if (!userColumns.includes('scrobble_error')) db.exec('ALTER TABLE users ADD COLUMN scrobble_error TEXT');
+// Google sign-in (identity only). SQLite can't add a UNIQUE column, so the uniqueness is an index.
+if (!userColumns.includes('google_id')) db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
+if (!userColumns.includes('google_email')) db.exec('ALTER TABLE users ADD COLUMN google_email TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users (google_id)');
 if (userColumns.includes('listenbrainz_token')) db.exec('UPDATE users SET listenbrainz_token = NULL WHERE listenbrainz_token IS NOT NULL');
 if (!(db.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]).some((c) => c.name === 'credits_done'))
 	db.exec('ALTER TABLE tracks ADD COLUMN credits_done INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE INDEX IF NOT EXISTS tracks_credits ON tracks (credits_done)');
+
+// SQLite can't change a CHECK in place, so a plays table from before the newest source is rebuilt
+// (https://www.sqlite.org/lang_altertable.html#otheralter). Foreign keys can only be switched off outside a transaction.
+const playsSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'plays'").get() as { sql: string }).sql;
+if (!PLAY_SOURCES.every((s) => playsSql.includes(`'${s}'`))) {
+	db.exec('PRAGMA foreign_keys = OFF');
+	try {
+		db.exec(`BEGIN;
+			${playsTable('plays_new')}
+			INSERT INTO plays_new (id, user_id, track_id, album_id, artist_id, played_at, ms_played, source)
+				SELECT id, user_id, track_id, album_id, artist_id, played_at, ms_played, source FROM plays;
+			DROP TABLE plays;
+			ALTER TABLE plays_new RENAME TO plays;
+			${PLAYS_INDEXES}
+			COMMIT;`);
+	} catch (e) {
+		if (db.isTransaction) db.exec('ROLLBACK');
+		throw e;
+	} finally {
+		db.exec('PRAGMA foreign_keys = ON');
+	}
+}
+
+// Takeout and scrobble plays of a song whose length isn't known yet are saved as 0 ms; once anything learns the
+// length (artwork lookup, a Spotify sync of the same song), they count as the whole song.
+db.exec(`CREATE TRIGGER IF NOT EXISTS plays_fill_length AFTER UPDATE OF duration_ms ON tracks
+	WHEN OLD.duration_ms IS NULL AND NEW.duration_ms IS NOT NULL
+	BEGIN
+		UPDATE plays SET ms_played = NEW.duration_ms WHERE track_id = NEW.id AND ms_played = 0 AND source IN ('takeout', 'scrobble');
+	END`);
 
 export const now = () => Math.floor(Date.now() / 1000);
 

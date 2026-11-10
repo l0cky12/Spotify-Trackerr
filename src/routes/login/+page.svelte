@@ -21,7 +21,12 @@
 	{#if form?.error}<p class="error">{form.error}</p>{/if}
 
 	{#if data.spotify}
-		<a class="button spotify" href="/auth/spotify?mode=login">{data.firstUser ? 'Create admin account with Spotify' : 'Log in with Spotify'}</a>
+		<a class="button sso" href="/auth/spotify?mode=login">{data.firstUser ? 'Create admin account with Spotify' : 'Log in with Spotify'}</a>
+	{/if}
+	{#if data.google}
+		<a class="button sso" href="/auth/google?mode=login">{data.firstUser ? 'Create admin account with Google' : 'Sign in with Google'}</a>
+	{/if}
+	{#if data.spotify || data.google}
 		<p class="or">or use a username and password</p>
 	{/if}
 
@@ -67,7 +72,7 @@
 		display: grid;
 		gap: 12px;
 	}
-	.spotify {
+	.sso {
 		text-align: center;
 		padding: 11px;
 	}

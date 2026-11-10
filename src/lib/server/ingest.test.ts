@@ -2,6 +2,7 @@ import { test, expect, beforeAll } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { strToU8 } from 'fflate';
 
 let m: typeof import('./ingest.js');
 let s: typeof import('./stats.js');
@@ -43,11 +44,12 @@ test('import rules and duplicate detection', () => {
 		entry('2024-03-01T15:00:00Z', 240_000, { incognito_mode: true }), // private session
 		entry('2024-03-01T16:00:00Z', 240_000, { spotify_track_uri: null, master_metadata_track_name: null }) // podcast
 	];
-	const a = m.importEntries(1, [{ name: 'f.json', entries: file }]);
+	const upload = () => m.readUploads([{ name: 'f.json', data: strToU8(JSON.stringify(file)) }]);
+	const a = m.importEntries(1, upload());
 	expect(a).toMatchObject({ added: 2, duplicates: 0, skipped_short: 1, skipped_private: 1, skipped_other: 1 });
 
 	// Re-importing the same file adds nothing.
-	expect(m.importEntries(1, [{ name: 'f.json', entries: file }]).added).toBe(0);
+	expect(m.importEntries(1, upload()).added).toBe(0);
 
 	// A live-synced copy of the same play, stamped at its start (4 min earlier), is a duplicate.
 	const artist = m.upsertArtist('Radiohead');

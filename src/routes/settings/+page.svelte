@@ -14,12 +14,14 @@
 	// One section shows at a time, picked by ?section= so it renders on the server and works without JavaScript.
 	// Each form posts to ?section=<id>&/<action> so the same section reopens with its result.
 	const sections = $derived([
-		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: !data.u.linked || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
+		{ id: 'spotify', group: 'Connections', title: 'Spotify', alert: (!data.u.linked && !data.u.scrobbleSource) || data.u.needsReconnect || !!data.u.lastError, body: spotifySection },
+		...(data.googleLogin || data.u.googleLinked || data.admin ? [{ id: 'google', group: 'Connections', title: 'Google', alert: false, body: googleSection }] : []),
 		{ id: 'lastfm', group: 'Connections', title: 'Last.fm', alert: false, body: lastfmSection },
 		{ id: 'listenbrainz', group: 'Connections', title: 'ListenBrainz', alert: false, body: listenbrainzSection },
+		{ id: 'youtube', group: 'Connections', title: 'YouTube Music', alert: !!data.u.scrobbleError, body: youtubeSection },
 		{ id: 'ownApp', group: 'Connections', title: 'Your own Spotify app', alert: false, body: ownAppSection },
 		{ id: 'mcp', group: 'Connections', title: 'AI assistant', alert: false, body: mcpSection },
-		{ id: 'import', group: 'Your data', title: 'Import your Spotify history', alert: false, body: importSection },
+		{ id: 'import', group: 'Your data', title: 'Import your history', alert: false, body: importSection },
 		{ id: 'bans', group: 'Your data', title: 'Banned', alert: false, body: bansSection },
 		{ id: 'prefs', group: 'Profile', title: 'Preferences', alert: false, body: prefsSection },
 		{ id: 'password', group: 'Profile', title: data.u.hasPassword ? 'Username and password' : 'Add a username and password', alert: false, body: passwordSection },
@@ -32,7 +34,7 @@
 
 <h1>Settings</h1>
 
-{#if data.welcome}<p class="ok">Welcome! Your account is ready. Import your Spotify history to fill in the past.</p>{/if}
+{#if data.welcome}<p class="ok">Welcome! Your account is ready. Import your Spotify or YouTube Music history to fill in the past.</p>{/if}
 {#if data.error}<p class="error">{data.error}</p>{/if}
 
 <div class="layout">
@@ -107,10 +109,16 @@
 
 {#snippet importSection()}
 <p>
-	Request <strong>Extended streaming history</strong> on Spotify's
+	<strong>Spotify:</strong> request <strong>Extended streaming history</strong> on Spotify's
 	<a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">privacy page</a>. It can take up to 30 days to arrive. Upload the .zip, or the
-	<code>Streaming_History_Audio_*.json</code> files inside it. Importing again is safe: plays already here are skipped.
+	<code>Streaming_History_Audio_*.json</code> files inside it.
 </p>
+<p>
+	<strong>YouTube Music:</strong> on <a href="https://takeout.google.com/" target="_blank" rel="noopener">Google Takeout</a>, choose only
+	<strong>YouTube and YouTube Music</strong>, set it to include just history, and under <strong>Multiple formats</strong> pick JSON for history. Upload the .zip, or the
+	<code>watch-history.json</code> inside it. Takeout doesn't say how long you listened, so each song counts as its full length once its length is known.
+</p>
+<p>Importing again is safe: plays already here are skipped.</p>
 <form
 	method="POST"
 	action="?section=import&/import"
@@ -233,7 +241,7 @@
 {/snippet}
 
 {#snippet passwordSection()}
-{#if !data.u.hasPassword}<p class="muted">Lets you log in without Spotify.</p>{/if}
+{#if !data.u.hasPassword}<p class="muted">Lets you log in without Spotify or Google.</p>{/if}
 <form method="POST" action="?section=password&/password" use:enhance class="stack">
 	<label>Username <input name="username" value={data.u.username ?? ''} autocomplete="username" required /></label>
 	{#if data.u.hasPassword}<label>Current password <input name="current" type="password" autocomplete="current-password" required /></label>{/if}
@@ -335,6 +343,69 @@
 {/if}
 {/snippet}
 
+{#snippet googleSection()}
+{#if data.u.googleLinked}
+	<p><span class="ok">Linked</span>{#if data.u.googleEmail} as {data.u.googleEmail}{/if}. You can log in with Google.</p>
+	<form method="POST" action="?section=google&/googleUnlink" use:enhance><button class="secondary">Unlink Google</button></form>
+	<p class="muted small">Google is only used to log you in. It doesn't bring in any listening; for YouTube Music, see <a href="?section=youtube">YouTube Music</a>.</p>
+{:else if data.googleLogin}
+	<p>Link your Google account to log in with Google. It's only used to log you in, not to read your listening.</p>
+	<a class="button" href="/auth/google?mode=link">Link Google</a>
+{:else if data.admin}
+	<p class="muted">
+		Google sign-in isn't set up on this server. Create an OAuth client (type: web application) in the
+		<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud console</a> with this redirect URI, then add its
+		<code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the server's <code>.env</code>.
+	</p>
+	<p><code>{data.googleCallback}</code></p>
+{/if}
+{#if msg('google')?.error}<p class="error">{msg('google')?.error}</p>{/if}
+{/snippet}
+
+{#snippet youtubeSection()}
+<p>YouTube Music doesn't let other apps read what you play, so your YouTube Music listening comes here in two steps.</p>
+<h3 class="sub">1. Your history so far</h3>
+<p>
+	Export it from Google Takeout and upload it under <a href="?section=import">Import your history</a>. In Takeout, choose JSON for history under
+	<strong>Multiple formats</strong>; the HTML file can't be read.
+</p>
+<h3 class="sub">2. New plays</h3>
+<p>
+	Set up a scrobbler that sends what you play to Last.fm or ListenBrainz: <a href="https://web-scrobbler.com/" target="_blank" rel="noopener">Web Scrobbler</a>
+	in your browser, or <a href="https://github.com/kawaiiDango/pano-scrobbler" target="_blank" rel="noopener">Pano Scrobbler</a> on your phone. Link that account under
+	<a href="?section=lastfm">Last.fm</a> or <a href="?section=listenbrainz">ListenBrainz</a>, then pick it here.
+</p>
+<form method="POST" action="?section=youtube&/scrobbleSource" use:enhance={() => ({ update }) => update({ reset: false })} class="row">
+	<label>
+		Count scrobbles as plays
+		<select name="source" value={data.u.scrobbleSource ?? ''}>
+			<option value="">Off</option>
+			<option value="lastfm" disabled={!data.u.lastfmUser}>Last.fm{data.u.lastfmUser ? ` (${data.u.lastfmUser})` : ' (not linked)'}</option>
+			<option value="listenbrainz" disabled={!data.u.listenbrainzUser}>ListenBrainz{data.u.listenbrainzUser ? ` (${data.u.listenbrainzUser})` : ' (not linked)'}</option>
+		</select>
+	</label>
+	<button class="secondary">Save</button>
+</form>
+{#if msg('youtube')?.error}<p class="error">{msg('youtube')?.error}</p>{/if}
+{#if msg('youtube')?.saved}<p class="ok">Saved.</p>{/if}
+{#if data.u.scrobbleSource}
+	{#if data.u.scrobbleError}
+		<p class="error">Last check failed: {data.u.scrobbleError}</p>
+	{:else if data.u.scrobblesThrough}
+		<p>
+			<span class="ok">Counting.</span> New scrobbles are checked every {data.u.syncMinutes} minutes; the newest counted is from
+			{formatWhen(data.u.scrobblesThrough, data.u.timezone)}.
+		</p>
+	{:else}
+		<p>The first check brings in all your scrobbles, which can take a few minutes for a long history.</p>
+	{/if}
+	<p class="muted small">
+		A scrobble of a song you also synced from Spotify or imported from Takeout around the same time counts once. Switching accounts keeps the plays already
+		counted.
+	</p>
+{/if}
+{/snippet}
+
 {#snippet mcpSection()}
 <p>
 	Connect an AI assistant (Claude, or any app that supports MCP servers) so it can watch for concerts by the artists you
@@ -406,6 +477,7 @@
 		</label>
 	</form>
 	<p class="muted small">Spotify sign-in always creates an account, but only for Spotify accounts you've added to the app's user list in the Spotify dashboard (up to 5).</p>
+	{#if data.googleLogin}<p class="muted small">Google sign-in creates an account only while the box above is ticked. Otherwise people link Google in Settings after logging in another way.</p>{/if}
 	{#if data.serverApp}<p class="muted small">Register <code>{data.callback}</code> (and the same path on your other address) as a redirect URI in the server's Spotify app.</p>{/if}
 	<table>
 		<thead><tr><th>Name</th><th>Username</th><th>Spotify</th><th>Plays</th><th>Admin</th><th></th></tr></thead>
